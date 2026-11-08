@@ -29,6 +29,28 @@ function logError(msg) {
 window.addEventListener('error', (e) => logError(`${e.message} @ ${e.filename}:${e.lineno}`));
 window.addEventListener('unhandledrejection', (e) => logError(`unhandled: ${e.reason && (e.reason.stack || e.reason)}`));
 
+/** 클립보드 복사: https가 아니면(사내 http 서버 등) 클립보드 API가 없으므로 대체 방법 사용 */
+function copyText(text, label) {
+  const fallback = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0;left:-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try {
+      ok = document.execCommand('copy');
+    } catch {
+      ok = false;
+    }
+    ta.remove();
+    if (ok) toast(t('복사했어요'));
+    else prompt(label || '', text);
+  };
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(() => toast(t('복사했어요')), fallback);
+  else fallback();
+}
+
 let toastTimer = 0;
 function toast(msg) {
   const el = $('toast');
@@ -453,11 +475,7 @@ function renderCustoms() {
       if (act === 'edit') openEditor(c);
       if (act === 'share') {
         const url = `${location.origin}${location.pathname}#s=${encodeShare(c)}`;
-        navigator.clipboard?.writeText(url).then(
-          () => toast(t('공유 링크를 복사했어요')),
-          () => prompt(t('공유 링크'), url)
-        );
-        if (!navigator.clipboard) prompt(t('공유 링크'), url);
+        copyText(url, t('공유 링크'));
       }
       if (act === 'del' && confirm(t('"{name}" 시나리오를 삭제할까요?', { name: c.name }))) {
         data.customs = data.customs.filter((x) => x.id !== c.id);
@@ -1115,7 +1133,7 @@ $('settings').addEventListener('change', readSettings);
 
 $('copy-errors').onclick = () => {
   const txt = localStorage.getItem(ERR_KEY) || '[]';
-  navigator.clipboard?.writeText(txt).then(() => toast(t('복사했어요')), () => prompt('errors', txt));
+  copyText(txt, t('오류 기록 복사'));
 };
 $('export-data').onclick = () => {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });

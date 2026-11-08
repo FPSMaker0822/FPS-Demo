@@ -106,6 +106,29 @@ python3 -m http.server 8000
 
 Netlify, Vercel, Cloudflare Pages 등 정적 호스팅 어디에 올려도 동작합니다.
 
+## 사내 서버(IIS)에 배포
+
+정적 파일만으로 동작하므로 IIS에 그대로 올리면 됩니다. 서버 쪽 코드나 DB는 필요 없습니다.
+
+1. **배포 파일 준비** (둘 중 하나)
+   - 저장소에서 `npm run build` → `dist/popshot` 폴더 생성 (Node.js 필요)
+   - 또는 GitHub **Actions → CI → 최신 실행 → Artifacts → `popshot-web`** 다운로드 후 압축 해제
+2. 서버의 `C:\inetpub\wwwroot\popshot` 같은 위치에 `popshot` 폴더 통째로 복사
+3. IIS 관리자에서 **사이트 추가**(또는 기존 사이트에 **응용 프로그램/가상 디렉터리 추가**) → 실제 경로를 위 폴더로 지정
+4. 브라우저에서 `http://서버이름/popshot/` 접속
+
+참고
+
+- 포함된 `web.config`가 IIS 기본 MIME 목록에 없는 `.webmanifest`를 등록하고, `index.html`/`sw.js`는 캐시하지 않도록 설정합니다.
+  서버 정책상 `web.config`의 `mimeMap` 재정의가 막혀 있다면 IIS 관리자 → MIME 형식에서 `.webmanifest` → `application/manifest+json`을 추가하세요.
+- **http(사내 주소)에서도 정상 동작**합니다. 다만 브라우저 보안 정책상 https가 아니면 다음 기능은 자동으로 대체/생략됩니다.
+  - 앱 설치 · 오프라인 실행(PWA): https에서만 가능 → http에서는 일반 웹페이지로 동작
+  - 저지연 입력(`pointerrawupdate`): https에서만 → 일반 마우스 이벤트 사용 (차이는 미미)
+  - 복사 버튼: 클립보드 API 대신 대체 방식으로 복사
+- 외부 인터넷이 막혀 있어도 됩니다. 외부 리소스는 폰트(Pretendard CDN) 하나뿐이며, 막히면 맑은 고딕 등 시스템 폰트로 표시됩니다.
+- 기록은 각 PC 브라우저에 저장됩니다 (동료끼리 순위 공유는 서버 기능이 필요).
+- 회사 PC에서 그래픽이 느리면 **설정 → 배경 · 화면 → 그래픽 품질: 낮음**을 쓰세요.
+
 ## 상표 · 개인정보 · 라이선스
 
 - 게임 이름(Valorant, Counter-Strike 2, Apex Legends, Overwatch 2, Call of Duty, Fortnite, Rainbow Six Siege)은
@@ -131,6 +154,8 @@ js/analysis.js      랭크 티어, 약점 분석 (순수 로직)
 js/custom.js        커스텀 시나리오 검증 · 공유 링크 (순수 로직)
 js/i18n.js          한국어/영어
 sw.js, manifest     PWA (설치 · 오프라인)
+web.config          IIS 배포 설정 (MIME, 캐시)
+scripts/            배포 폴더 생성 (npm run build)
 tests/              단위 테스트 + 브라우저 E2E
 vendor/             three.js r170 + 후처리/환경 애드온 (MIT)
 ```
