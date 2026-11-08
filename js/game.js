@@ -146,7 +146,7 @@ export class Game {
     const mx = e.movementX || 0, my = e.movementY || 0;
     // 일부 브라우저가 락 직후 큰 값을 한 번 보내는 문제 방지
     if (performance.now() - this.lockTime < 80 && (Math.abs(mx) > 150 || Math.abs(my) > 150)) return;
-    const d = this.dpc * DEG;
+    const d = (this.dpcOverride ?? this.dpc) * DEG; // 감도 찾기 중에는 테스트 감도
     this.yaw -= mx * d;
     this.pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, this.pitch - my * d));
     this.applyCamera();
@@ -219,7 +219,7 @@ export class Game {
     this.hud.reset();
     this.lastTickSec = 99;
     this._ktLen = 0;
-    this.hud.setScenario(this.def.name, routineText);
+    this.hud.setScenario(this.def.custom ? this.def.name : t(this.def.name), routineText);
     this.hud.message('');
     this.hud.show(true);
     this.hud.update(this);
@@ -334,7 +334,7 @@ export class Game {
   remove(b) {
     if (b.dead) return;
     b.dispose();
-    this.targets = this.targets.filter((t) => t !== b);
+    this.targets = this.targets.filter((x) => x !== b);
   }
 
   pop(b, points, text) {
@@ -348,7 +348,7 @@ export class Game {
       // 사람 표적은 터지지 않고 조용히 사라짐
       this.sfx.beep(990, 0.1, 0.14);
       this.sfx.beep(1480, 0.12, 0.12, 0.06);
-      this.targets = this.targets.filter((t) => t !== b);
+      this.targets = this.targets.filter((x) => x !== b);
       b.startFade();
       this.fading.push(b);
       this.feedKill(points, t('처치'), b.color);
@@ -524,7 +524,8 @@ export class Game {
     if (this.state === 'idle' || this.state === 'results') {
       this.idleT += dt;
       this.camera.position.set(0, EYE_HEIGHT, 0);
-      this.camera.rotation.set(0.1 + Math.sin(this.idleT * 0.13) * 0.05, Math.sin(this.idleT * 0.07) * 0.35, 0, 'YXZ');
+      if (this.reduceMotion) this.camera.rotation.set(0.1, 0, 0, 'YXZ');
+      else this.camera.rotation.set(0.1 + Math.sin(this.idleT * 0.13) * 0.05, Math.sin(this.idleT * 0.07) * 0.35, 0, 'YXZ');
       for (const b of this.decor) {
         if (b.kind === 'bot') {
           // 봇: 제자리에서 좌우 스트레이프

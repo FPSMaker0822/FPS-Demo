@@ -249,6 +249,103 @@ await step('settings: colorblind mode, graphics quality and diagnostics', async 
   await page.close();
 });
 
+// 6) 감도 찾기: 5번 테스트 → 추천 → 적용, 일반 기록에는 섞이지 않음
+await step('sensitivity finder runs 5 blind tests and applies a recommendation', async () => {
+  const page = await newPage(seeded);
+  const before = await page.evaluate(() => window.popshot.game.dpc);
+  await page.click('.nav-item[data-page="routines"]');
+  await page.click('#finder-start');
+  const dpcs = [];
+  for (let i = 0; i < 5; i++) {
+    await skipCountdown(page);
+    await page.waitForFunction(() => window.popshot.game.targets.length > 0);
+    dpcs.push(await page.evaluate(() => window.popshot.game.dpcOverride));
+    for (let k = 0; k < 2 + i; k++) {
+      await aimAndFire(page);
+      await page.waitForTimeout(40);
+    }
+    await endRun(page);
+    await page.waitForSelector('#results:not(.hidden)');
+    if (i < 4) await page.click('#res-next');
+  }
+  assert.equal(new Set(dpcs.map((d) => d.toFixed(6))).size, 5, 'five different test sensitivities');
+  await page.waitForSelector('#finder-apply');
+  assert.equal(await page.evaluate(() => window.popshot.game.dpcOverride), null, 'override cleared after the last test');
+  await page.click('#finder-apply');
+  assert.ok(await page.isDisabled('#finder-apply'), 'apply button disables after applying');
+  const after = await page.evaluate(() => window.popshot.game.dpc);
+  const ratio = after / before;
+  assert.ok(ratio >= 0.69 && ratio <= 1.41, `recommended dpc within tested range (ratio ${ratio})`);
+  assert.equal(await page.evaluate(() => window.popshot.data.log.length), 0, 'finder runs are not saved as normal records');
+});
+
+// 7) 루틴 2단계 진행 + 일시정지/재개 + R 재시작
+await step('routine steps, pause/resume and instant restart', async () => {
+  const page = await newPage(seeded);
+  await page.click('.nav-item[data-page="routines"]');
+  await page.click('#routine-grid .card >> nth=1'); // 랭크 전 3분 워밍업 (3단계)
+  await skipCountdown(page);
+  await page.waitForFunction(() => window.popshot.game.state === 'playing');
+  // 포인터 락이 풀리면 일시정지
+  await page.evaluate(() => document.exitPointerLock());
+  await page.waitForSelector('#pause:not(.hidden)');
+  assert.equal(await page.evaluate(() => window.popshot.game.state), 'paused');
+  await page.click('#pause-resume');
+  await page.waitForFunction(() => window.popshot.game.state === 'playing');
+  // R: 즉시 재시작 → 카운트다운부터
+  await page.keyboard.press('KeyR');
+  assert.equal(await page.evaluate(() => window.popshot.game.state), 'countdown');
+  await skipCountdown(page);
+  await page.waitForFunction(() => window.popshot.game.state === 'playing');
+  await endRun(page);
+  await page.waitForSelector('#results:not(.hidden)');
+  assert.ok(await page.isVisible('#res-next'));
+  await page.keyboard.press('Enter'); // 다음 단계
+  await skipCountdown(page);
+  await page.waitForFunction(() => window.popshot.game.state === 'playing' && window.popshot.game.scenarioId === 'micro');
+});
+
+// 8) 반응속도: 미리 쏘면 부정 출발로 감점, 발사 수에는 안 셈
+await step('reaction false start is penalized but not counted as a shot', async () => {
+  const page = await newPage(seeded);
+  await page.evaluate(() => {
+    document.getElementById('menu').classList.add('hidden');
+    window.popshot.game.begin('reaction', {});
+    window.popshot.game.requestLock();
+  });
+  await page.waitForTimeout(50);
+  await skipCountdown(page);
+  await page.waitForFunction(() => window.popshot.game.scenario.phase === 'wait');
+  await page.evaluate(() => {
+    document.dispatchEvent(new MouseEvent('mousedown', { button: 0 }));
+    document.dispatchEvent(new MouseEvent('mouseup', { button: 0 }));
+  });
+  const s = await page.evaluate(() => window.popshot.game.stats);
+  assert.equal(s.falseStarts, 1);
+  assert.equal(s.shots, 0);
+});
+
+// 9) 기록 가져오기: 다른 PC 백업을 합침
+await step('importing a backup file merges records', async () => {
+  const page = await newPage(seeded);
+  page.on('dialog', (d) => d.accept());
+  const backup = {
+    best: { 'grid|normal|60': { score: 4321, accuracy: 0.9, date: 1700000000000 } },
+    history: {},
+    log: [{ id: 'grid', score: 4321, accuracy: 0.9, date: 1700000000000 }],
+    bench: { six: 9000 },
+    customs: [],
+  };
+  await page.click('#nav-settings');
+  await page.click('#settings-tabs [data-tab="general"]');
+  await page.setInputFiles('#import-file', { name: 'popshot-backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup)) });
+  await page.waitForFunction(() => window.popshot.data.log.length === 1);
+  assert.equal(await page.evaluate(() => window.popshot.data.bench.six), 9000);
+  // 잘못된 파일은 거부
+  await page.setInputFiles('#import-file', { name: 'x.json', mimeType: 'application/json', buffer: Buffer.from('{"hello":1}') });
+  await page.waitForFunction(() => /POPSHOT/.test(document.getElementById('toast').textContent));
+});
+
 await browser.close();
 server.close();
 if (errors.length) {

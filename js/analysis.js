@@ -123,3 +123,45 @@ export function analyzeRun(raw = {}) {
   }
   return out;
 }
+
+// ───────────────────────── 감도 찾기
+/** 테스트할 감도 배율 (현재 감도 기준). 순서는 섞어서 블라인드로 진행 */
+export const SENS_FINDER_MULTS = [0.7, 0.85, 1, 1.2, 1.4];
+
+/**
+ * 감도별 점수 → 추천 배율.
+ * log(배율)에 대해 2차 곡선을 맞춰 꼭짓점(최고점)을 찾고, 곡선이 위로 볼록하지 않으면 최고 점수 배율을 고름.
+ * points: [{ mult, score }]
+ */
+export function recommendSens(points) {
+  const pts = (Array.isArray(points) ? points : []).filter((p) => p && p.mult > 0 && Number.isFinite(p.score));
+  if (!pts.length) return null;
+  // 점수가 같으면 지금 감도(배율 1)에 가까운 쪽을 선택
+  const closer = (a, b) => Math.abs(Math.log(b.mult)) < Math.abs(Math.log(a.mult));
+  const best = pts.reduce((a, b) => (b.score > a.score || (b.score === a.score && closer(a, b)) ? b : a));
+  const xs = pts.map((p) => Math.log(p.mult));
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  if (pts.length >= 3 && maxX > minX) {
+    // 최소제곱 2차 회귀 y = a x² + b x + c
+    let s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, t0 = 0, t1 = 0, t2 = 0;
+    for (const p of pts) {
+      const x = Math.log(p.mult), y = p.score;
+      s0 += 1; s1 += x; s2 += x * x; s3 += x ** 3; s4 += x ** 4;
+      t0 += y; t1 += x * y; t2 += x * x * y;
+    }
+    // 3x3 연립방정식 (크래머 공식)
+    const det = (m) =>
+      m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+    const M = [[s4, s3, s2], [s3, s2, s1], [s2, s1, s0]];
+    const D = det(M);
+    if (Math.abs(D) > 1e-12) {
+      const a = det([[t2, s3, s2], [t1, s2, s1], [t0, s1, s0]]) / D;
+      const b = det([[s4, t2, s2], [s3, t1, s1], [s2, t0, s0]]) / D;
+      if (a < 0) {
+        const xv = Math.min(maxX, Math.max(minX, -b / (2 * a)));
+        return { mult: Math.exp(xv), fitted: true, best: best.mult };
+      }
+    }
+  }
+  return { mult: best.mult, fitted: false, best: best.mult };
+}

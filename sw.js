@@ -1,9 +1,9 @@
 // 오프라인 지원: 앱 파일을 캐시. 새 버전 배포 시 VERSION을 올리면 캐시가 갱신됨
-const VERSION = 'popshot-v9';
+const VERSION = 'popshot-v10';
 const CORE = [
   './', 'index.html', 'css/style.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png',
   'js/main.js', 'js/game.js', 'js/world.js', 'js/targets.js', 'js/scenarios.js', 'js/hud.js', 'js/audio.js',
-  'js/storage.js', 'js/i18n.js', 'js/analysis.js', 'js/custom.js',
+  'js/storage.js', 'js/i18n.js', 'js/analysis.js', 'js/custom.js', 'js/version.js',
   'vendor/three.module.min.js',
   'vendor/addons/postprocessing/EffectComposer.js', 'vendor/addons/postprocessing/RenderPass.js',
   'vendor/addons/postprocessing/UnrealBloomPass.js', 'vendor/addons/postprocessing/OutputPass.js',

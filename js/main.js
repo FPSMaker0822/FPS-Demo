@@ -6,9 +6,10 @@ import { Hud, drawCrosshair } from './hud.js';
 import { SCENARIOS, ROUTINES, DIFFICULTY, CATEGORIES, BENCHMARK, RECOMMEND, registerCustom, unregisterCustom } from './scenarios.js';
 import { TARGET_KINDS, PALETTE } from './targets.js';
 import { t, setLang, getLang, applyI18n } from './i18n.js';
-import { tierFor, overallTier, weakestCategory, analyzeRun, TIERS } from './analysis.js';
+import { tierFor, overallTier, weakestCategory, analyzeRun, TIERS, SENS_FINDER_MULTS, recommendSens } from './analysis.js';
 import { CUSTOM_FIELDS, sanitizeCustom, encodeShare, decodeShare, newCustomId } from './custom.js';
 import * as store from './storage.js';
+import { APP_VERSION } from './version.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -494,6 +495,11 @@ let pendingImport = null;
 function checkImport() {
   const m = location.hash.match(/^#s=([A-Za-z0-9_-]+)$/);
   if (!m) return false;
+  // 게임 중이면 끝난 뒤(메뉴/결과 화면)에 보여줌
+  if (game.active || game.state === 'paused') {
+    setTimeout(checkImport, 1000);
+    return false;
+  }
   const cfg = decodeShare(m[1]);
   history.replaceState(null, '', location.pathname + location.search);
   if (!cfg) {
@@ -639,8 +645,68 @@ function startRoutine(r) {
 
 function startRoutineStep() {
   const [id, d] = routine.def.steps[routine.index];
-  if (routine.bench) startRun(id, d || 60, { seed: seedFor(id), difficulty: BENCHMARK.difficulty });
+  if (routine.finder) {
+    // 감도 찾기: 단계마다 다른 감도로 같은 배치를 플레이 (어떤 감도인지는 끝날 때까지 비공개)
+    game.dpcOverride = routine.finder.base * routine.finder.mults[routine.index];
+    startRun(id, d, { seed: seedFor('sens-finder'), difficulty: 'normal' });
+  } else if (routine.bench) startRun(id, d || 60, { seed: seedFor(id), difficulty: BENCHMARK.difficulty });
   else startRun(id, d || 60);
+}
+
+// ───────────────────────── 감도 찾기
+const FINDER_STEP_SEC = 20;
+function startFinder() {
+  const mults = [...SENS_FINDER_MULTS];
+  for (let i = mults.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [mults[i], mults[j]] = [mults[j], mults[i]];
+  }
+  only(null);
+  routine = {
+    def: { name: '감도 찾기', icon: '🎚️', steps: mults.map(() => ['spider', FINDER_STEP_SEC]) },
+    index: 0,
+    results: [],
+    finder: { mults, base: store.degPerCount(settings), game: settings.sensGame, sens: store.getSens(settings) },
+  };
+  startRoutineStep();
+}
+
+/** 배율 → 현재 게임 기준 감도 값 (cm/360 모드는 거리라서 반비례) */
+function finderSens(f, mult) {
+  return f.game === 'cm360' ? f.sens / mult : f.sens * mult;
+}
+
+function renderFinder() {
+  const f = routine.finder;
+  const done = routine.results.filter(Boolean).length;
+  const total = routine.def.steps.length;
+  if (done < total) {
+    return `<div class="small-label">${t('감도 찾기')} · ${t('{d}/{n} 완료', { d: done, n: total })}</div>
+      <p class="hint">${t('감도는 끝날 때까지 공개되지 않아요. 평소처럼 플레이하세요.')}</p>`;
+  }
+  const pts = f.mults.map((mult, i) => ({ mult, score: routine.results[i].score })).sort((a, b) => a.mult - b.mult);
+  const rec = recommendSens(pts);
+  const max = Math.max(...pts.map((p) => p.score), 1);
+  const unit = f.game === 'cm360' ? ' cm/360' : '';
+  const recSens = finderSens(f, rec.mult);
+  const gameLabel = t(store.SENS_PRESETS[f.game].label);
+  const bars = pts
+    .map((p) => `<div class="fs-row ${Math.abs(p.mult - rec.best) < 1e-9 ? 'best' : ''}">
+        <span>${store.fmtSens(finderSens(f, p.mult))}${unit}</span>
+        <div class="mini-bar"><i style="width:${(p.score / max) * 100}%"></i></div>
+        <b>${p.score.toLocaleString()}</b></div>`)
+    .join('');
+  return `<div class="small-label">${t('감도 찾기 결과')}</div>
+    <div class="finder-result">
+      <div class="fs-bars">${bars}</div>
+      <div class="fs-rec">
+        <div class="tile-label">${t('추천 감도')} · ${esc(gameLabel)}</div>
+        <div class="rank-big">${store.fmtSens(recSens)}${unit}</div>
+        <div class="tile-sub">${t('현재 {s}', { s: store.fmtSens(f.sens) + unit })} · ${rec.fitted ? t('점수 곡선의 최고점') : t('가장 높은 점수')}</div>
+        <button class="btn primary small-btn" id="finder-apply">${t('이 감도 적용')}</button>
+      </div>
+    </div>
+    <p class="hint">${t('한 번의 결과는 컨디션에 따라 달라질 수 있어요. 2~3번 해보고 비슷하게 나오는 값을 쓰는 걸 추천해요.')}</p>`;
 }
 
 // ───────────────────────── 결과
@@ -753,17 +819,22 @@ function drawSpark(canvas, hist) {
 let enterAction = null;
 
 function showResults(r) {
-  const rec = store.record(data, r);
+  const finder = routine?.finder;
+  // 감도 찾기 테스트는 일반 기록에 섞지 않음
+  const rec = finder ? { isBest: false, prevBest: null, history: [] } : store.record(data, r);
   const bench = routine?.bench;
   if (bench && (data.bench[r.scenarioId] == null || r.score > data.bench[r.scenarioId])) data.bench[r.scenarioId] = r.score;
   $('res-name').textContent = sName(r.scenarioId);
-  $('res-meta').textContent = bench
+  $('res-meta').textContent = finder
+    ? t('감도 테스트 {i}/{n}', { i: routine.index + 1, n: routine.def.steps.length })
+    : bench
     ? t('벤치마크 · 보통 · 고정 배치')
     : `${t(DIFFICULTY[r.difficulty].label)} · ${r.duration ? t('{n}초', { n: r.duration }) : t('10라운드')} · ${t(TARGET_KINDS[r.kind].label)}`;
   $('res-score').textContent = r.score.toLocaleString();
   $('res-badge').classList.toggle('hidden', !rec.isBest || rec.prevBest == null);
-  $('res-prev').textContent =
-    rec.prevBest == null
+  $('res-prev').textContent = finder
+    ? ''
+    : rec.prevBest == null
       ? t('첫 기록!')
       : rec.isBest
       ? t('이전 최고 {n}', { n: rec.prevBest.toLocaleString() })
@@ -809,6 +880,20 @@ function showResults(r) {
       <tfoot><tr><td>${t('합계')}</td><td>${total.toLocaleString()}</td><td>${
         done.length ? pct(done.reduce((a, x) => a + x.accuracy, 0) / done.length) : '—'
       }</td>${footExtra}</tr></tfoot></table>`;
+    if (finder) {
+      rr.innerHTML = renderFinder();
+      if (!hasNext) game.dpcOverride = null; // 테스트 끝 → 원래 감도로
+      $('finder-apply')?.addEventListener('click', () => {
+        const f = routine.finder;
+        const pts = f.mults.map((mult, i) => ({ mult, score: routine.results[i].score }));
+        const v = Number(store.fmtSens(finderSens(f, recommendSens(pts).mult)));
+        settings.sensByGame[f.game] = v;
+        settings.sensGame = f.game;
+        applySettings();
+        toast(t('감도를 {s}로 바꿨어요', { s: store.fmtSens(v) }));
+        $('finder-apply').disabled = true;
+      });
+    }
     rr.classList.remove('hidden');
   } else {
     rr.classList.add('hidden');
@@ -825,16 +910,20 @@ function showResults(r) {
   } else {
     $('res-retry').classList.add('primary');
     enterAction = retry;
-    $('res-enter-label').textContent = routine ? t('루틴 다시 하기') : t('다시 하기');
+    $('res-enter-label').textContent = finder ? t('감도 찾기 다시 하기') : routine ? t('루틴 다시 하기') : t('다시 하기');
   }
-  $('res-retry').textContent = routine && !hasNext ? t('루틴 다시 하기') : t('다시 하기');
+  $('res-retry').textContent = finder && !hasNext ? t('감도 찾기 다시 하기') : routine && !hasNext ? t('루틴 다시 하기') : t('다시 하기');
+  if (finder && hasNext) $('res-next').textContent = t('다음 테스트 ▶');
+  document.querySelector('.spark-wrap').classList.toggle('hidden', !!finder);
 
   only('results');
-  requestAnimationFrame(() => drawSpark($('res-spark'), rec.history));
+  if (!finder) requestAnimationFrame(() => drawSpark($('res-spark'), rec.history));
 }
 
 function retry() {
-  if (routine && routine.index >= routine.def.steps.length - 1 && routine.results.length === routine.def.steps.length) {
+  if (routine?.finder && routine.results.filter(Boolean).length === routine.def.steps.length) {
+    startFinder();
+  } else if (routine && routine.index >= routine.def.steps.length - 1 && routine.results.length === routine.def.steps.length) {
     routine = { ...routine, index: 0, results: [] };
     startRoutineStep();
   } else if (lastRun) {
@@ -848,6 +937,7 @@ function nextStep() {
 }
 
 function toMenu() {
+  game.dpcOverride = null;
   game.quit();
   routine = null;
   only('menu');
@@ -863,7 +953,13 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     enterAction?.();
   }
-  if (e.code === 'Escape' && !capturing && !$('settings').classList.contains('hidden')) closeSettings();
+  if (e.code === 'Escape' && !capturing) {
+    // 맨 위에 떠 있는 창부터 닫기
+    if (!$('import').classList.contains('hidden')) hide('import');
+    else if (!$('diag').classList.contains('hidden')) {
+      if (!diagLocked()) closeDiag();
+    } else if (!$('settings').classList.contains('hidden')) closeSettings();
+  }
 });
 
 // ───────────────────────── 일시정지
@@ -1143,6 +1239,25 @@ $('export-data').onclick = () => {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 };
+// 다른 PC에서 내보낸 기록 합치기 (설정은 그대로)
+$('import-data').onclick = () => $('import-file').click();
+$('import-file').onchange = async () => {
+  const file = $('import-file').files[0];
+  $('import-file').value = '';
+  if (!file) return;
+  try {
+    if (file.size > 5 * 1024 * 1024) throw new Error('too large');
+    const incoming = JSON.parse(await file.text());
+    if (!confirm(t('"{name}"의 기록을 지금 기록에 합칠까요? (설정은 바뀌지 않아요)', { name: file.name }))) return;
+    const { added } = store.mergeData(data, incoming, sanitizeCustom);
+    for (const c of data.customs) registerCustom(c);
+    store.save(data);
+    renderPage();
+    toast(t('기록 {n}판을 가져왔어요', { n: added }));
+  } catch {
+    toast(t('이 파일은 POPSHOT 기록 파일이 아니에요'));
+  }
+};
 $('redo-onboard').onclick = () => {
   hide('settings');
   openOnboarding();
@@ -1313,6 +1428,11 @@ function closeDiag() {
   hide('diag');
 }
 $('open-diag').onclick = openDiag;
+$('open-finder').onclick = () => {
+  hide('settings');
+  startFinder();
+};
+$('finder-start').onclick = startFinder;
 $('diag-close').onclick = closeDiag;
 
 // ───────────────────────── 첫 실행 안내
@@ -1381,6 +1501,11 @@ $('ob-bench').onclick = () => {
 };
 $('ob-skip').onclick = finishOnboarding;
 
+// 움직임 줄이기(OS 설정): 메뉴 배경 카메라 흔들림 끄기
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+game.reduceMotion = reduceMotion.matches;
+reduceMotion.addEventListener?.('change', (e) => (game.reduceMotion = e.matches));
+
 // ───────────────────────── PWA (설치 · 오프라인)
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -1410,6 +1535,7 @@ if (matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').ma
 }
 
 document.documentElement.lang = getLang();
+$('app-version').textContent = `POPSHOT v${APP_VERSION}`;
 applyI18n(document);
 applySettings();
 showPage('play');

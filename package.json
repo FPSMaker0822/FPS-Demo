@@ -1,6 +1,6 @@
 {
   "name": "popshot",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Browser FPS aim trainer (static site, no build step)",
   "type": "module",
@@ -8,6 +8,12 @@
     "start": "python3 -m http.server 8000",
     "test": "node --test tests/*.test.mjs",
     "test:e2e": "node tests/e2e.mjs",
-    "build": "node scripts/build-dist.mjs"
+    "build": "node scripts/build-dist.mjs",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "globals": "^16.5.0"
   }
 }

@@ -143,6 +143,14 @@
             <p class="lede" data-i18n>여러 시나리오를 연속으로 진행하고, 마지막에 합계와 단계별 결과를 보여줍니다.</p>
           </div>
         </header>
+        <div class="tile finder-cta">
+          <div>
+            <div class="hero-tag" data-i18n>감도 찾기</div>
+            <div class="hero-title" data-i18n>나에게 맞는 감도는?</div>
+            <p class="lede" data-i18n>감도 5가지로 20초씩 플레이하면 점수가 가장 잘 나오는 감도를 추천해요. 어떤 감도인지는 끝날 때까지 비공개예요.</p>
+          </div>
+          <button class="btn primary" id="finder-start" data-i18n>감도 찾기 시작</button>
+        </div>
         <div id="routine-grid" class="cards routines"></div>
       </div>
 
@@ -331,6 +339,7 @@
             <label><span data-i18n>마우스 DPI</span><input type="number" id="set-dpi" step="50" min="100" /></label>
             <div class="readout" id="sens-readout"></div>
             <button class="btn small-btn" id="apply-fov"></button>
+            <button class="btn small-btn" id="open-finder" data-i18n>🎚️ 감도 찾기 (약 2분)</button>
             <button class="btn ghost small-btn" id="open-diag" data-i18n>입력 진단 · DPI 측정</button>
             <p class="hint" data-i18n>감도는 게임마다 따로 저장됩니다. 정확한 변환을 위해 OS의 "포인터 정밀도 향상"은 꺼두세요.</p>
           </div>
@@ -432,10 +441,12 @@
             <div class="group-title" data-i18n>정보</div>
             <p class="hint" data-i18n>모든 기록과 설정은 이 브라우저에만 저장되며 서버로 전송되지 않습니다.</p>
             <p class="hint" data-i18n>게임 이름(Valorant, Counter-Strike 2 등)은 감도 변환을 설명하기 위해서만 사용되며, 각 상표권자와 무관합니다.</p>
-            <p class="hint">three.js (MIT) · Pretendard (SIL OFL 1.1)</p>
+            <p class="hint">three.js (MIT) · Pretendard (SIL OFL 1.1) · <span id="app-version"></span></p>
             <div class="btns">
               <button class="btn ghost small-btn" id="copy-errors" data-i18n>오류 기록 복사</button>
               <button class="btn ghost small-btn" id="export-data" data-i18n>기록 내보내기 (JSON)</button>
+              <button class="btn ghost small-btn" id="import-data" data-i18n>기록 가져오기 (JSON)</button>
+              <input type="file" id="import-file" accept="application/json,.json" hidden />
             </div>
             <p class="hint" id="error-count"></p>
           </div>

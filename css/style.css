@@ -464,3 +464,24 @@ input[type='text']:focus { outline: none; border-color: var(--accent); }
 }
 /* 설정 위에서 여는 창이 가려지지 않도록 */
 #diag, #import { z-index: 40; }
+
+/* ───────── 감도 찾기 */
+.finder-cta { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-bottom: 16px; flex-wrap: wrap;
+  background: radial-gradient(400px 160px at 100% 0%, rgba(46, 242, 176, 0.18), transparent 70%), var(--surface); }
+.finder-cta .lede { margin: 6px 0 0; max-width: 640px; }
+.finder-result { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; align-items: center; }
+.fs-bars { display: flex; flex-direction: column; gap: 8px; }
+.fs-row { display: grid; grid-template-columns: 90px 1fr 70px; gap: 10px; align-items: center; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.fs-row .mini-bar { margin: 0; height: 8px; }
+.fs-row b { color: var(--text); text-align: right; }
+.fs-row.best span, .fs-row.best b { color: var(--accent); }
+.fs-rec { background: rgba(46, 242, 176, 0.06); border: 1px solid rgba(46, 242, 176, 0.25); border-radius: 14px; padding: 14px; }
+.fs-rec .rank-big { color: var(--accent); margin: 4px 0; }
+@media (max-width: 760px) { .finder-result { grid-template-columns: 1fr; } }
+
+/* ───────── 접근성 */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:focus:not(:focus-visible) { outline: none; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+}

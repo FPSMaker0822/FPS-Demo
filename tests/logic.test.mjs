@@ -104,3 +104,54 @@ test('analyzeRun never throws on malformed input', () => {
     assert.doesNotThrow(() => analyzeRun(bad ?? undefined));
   }
 });
+
+test('recommendSens finds the peak of a smooth curve', async () => {
+  const { recommendSens, SENS_FINDER_MULTS } = await import('../js/analysis.js');
+  // 점수가 배율 1.1 근처에서 최고인 곡선
+  const pts = SENS_FINDER_MULTS.map((mult) => ({ mult, score: 1000 - 4000 * (Math.log(mult) - Math.log(1.1)) ** 2 }));
+  const r = recommendSens(pts);
+  assert.ok(r.fitted);
+  assert.ok(Math.abs(r.mult - 1.1) < 0.01, `got ${r.mult}`);
+});
+
+test('recommendSens falls back to the best score and stays in range', async () => {
+  const { recommendSens } = await import('../js/analysis.js');
+  // 오르기만 하는 경우 → 범위 끝(1.4)
+  const up = recommendSens([0.7, 0.85, 1, 1.2, 1.4].map((mult, i) => ({ mult, score: i * 100 })));
+  assert.ok(up.mult <= 1.4 + 1e-9 && up.mult >= 1.2);
+  assert.equal(recommendSens([]), null);
+  assert.equal(recommendSens([{ mult: 1, score: 5 }]).mult, 1);
+});
+
+test('mergeData combines records from another PC safely', async () => {
+  const { mergeData } = await import('../js/storage.js');
+  const data = {
+    best: { 'grid|normal|60': { score: 500, accuracy: 0.9, date: 1 } },
+    history: { 'grid|normal|60': [{ score: 500, accuracy: 0.9, date: 1 }] },
+    log: [{ id: 'grid', score: 500, accuracy: 0.9, date: 1 }],
+    bench: { six: 100 },
+    customs: [],
+  };
+  const incoming = {
+    best: { 'grid|normal|60': { score: 800, accuracy: 0.8, date: 2 }, '<script>': { score: 1, accuracy: 1, date: 1 } },
+    history: { 'grid|normal|60': [{ score: 500, accuracy: 0.9, date: 1 }, { score: 800, accuracy: 0.8, date: 2 }] },
+    log: [{ id: 'grid', score: 500, accuracy: 0.9, date: 1 }, { id: 'grid', score: 800, accuracy: 0.8, date: 2 }, { id: 'bad id!', score: 1, accuracy: 1, date: 3 }],
+    bench: { six: 50, micro: 900 },
+    customs: [{ id: 'abcd1234', name: 'X', count: 99 }],
+  };
+  const r = mergeData(data, incoming, sanitizeCustom);
+  assert.equal(r.added, 1);
+  assert.equal(data.best['grid|normal|60'].score, 800);
+  assert.equal(data.best['<script>'], undefined);
+  assert.equal(data.history['grid|normal|60'].length, 2);
+  assert.deepEqual(data.bench, { six: 100, micro: 900 });
+  assert.equal(data.customs[0].count, 8);
+  // 다시 합쳐도 중복되지 않음
+  assert.equal(mergeData(data, incoming, sanitizeCustom).added, 0);
+  assert.throws(() => mergeData(data, { hello: 1 }));
+});
+
+test('recommendSens prefers the current sensitivity on ties', async () => {
+  const { recommendSens } = await import('../js/analysis.js');
+  assert.equal(recommendSens([0.7, 0.85, 1, 1.2, 1.4].map((mult) => ({ mult, score: 3000 }))).mult, 1);
+});

@@ -152,6 +152,22 @@ const EN = {
   '저장된 오류 기록: {n}건': 'Stored errors: {n}', '복사했어요': 'Copied', '모든 최고 기록과 히스토리를 삭제할까요?': 'Delete all best scores and history?',
   '오류가 발생했어요. 설정 → 일반에서 오류 기록을 복사할 수 있어요.': 'Something went wrong. You can copy the error log in Settings → General.',
 
+  // 감도 찾기 · 기록 가져오기
+  '감도 찾기': 'Sensitivity finder', '나에게 맞는 감도는?': 'Which sensitivity suits you?',
+  '감도 5가지로 20초씩 플레이하면 점수가 가장 잘 나오는 감도를 추천해요. 어떤 감도인지는 끝날 때까지 비공개예요.':
+    'Play 20 seconds at each of 5 sensitivities and we\u2019ll recommend the one you score best with. The values stay hidden until the end.',
+  '감도 찾기 시작': 'Start sensitivity finder', '🎚️ 감도 찾기 (약 2분)': '🎚️ Sensitivity finder (~2 min)',
+  '기록 가져오기 (JSON)': 'Import data (JSON)', '{d}/{n} 완료': '{d}/{n} done',
+  '감도는 끝날 때까지 공개되지 않아요. 평소처럼 플레이하세요.': 'Sensitivities stay hidden until the end. Just play normally.',
+  '감도 찾기 결과': 'Sensitivity finder result', '추천 감도': 'Recommended sensitivity', '현재 {s}': 'current {s}',
+  '점수 곡선의 최고점': 'peak of the score curve', '가장 높은 점수': 'highest score', '이 감도 적용': 'Apply this sensitivity',
+  '한 번의 결과는 컨디션에 따라 달라질 수 있어요. 2~3번 해보고 비슷하게 나오는 값을 쓰는 걸 추천해요.':
+    'A single run depends on your form that day. Try it 2\u20133 times and use a value that comes up consistently.',
+  '감도 테스트 {i}/{n}': 'Sensitivity test {i}/{n}', '감도를 {s}로 바꿨어요': 'Sensitivity set to {s}',
+  '감도 찾기 다시 하기': 'Run finder again', '다음 테스트 ▶': 'Next test ▶',
+  '"{name}"의 기록을 지금 기록에 합칠까요? (설정은 바뀌지 않아요)': 'Merge the records from "{name}" into your current records? (Settings stay unchanged)',
+  '기록 {n}판을 가져왔어요': 'Imported {n} runs', '이 파일은 POPSHOT 기록 파일이 아니에요': 'This is not a POPSHOT data file',
+
   // 데이터 라벨 (시나리오 · 테마 · 게임 등)
   '그리드 클릭': 'Grid Click', '플릭 · 속도': 'Flick · Speed',
   '격자 위 3개의 타겟. 하나를 맞히면 다른 칸에 새로 생깁니다. 연속 명중 보너스.': 'Three targets on a grid. Hit one and another appears in a different cell. Streak bonus.',

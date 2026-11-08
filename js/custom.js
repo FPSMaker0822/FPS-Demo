@@ -22,6 +22,8 @@ const clampNum = (v, { min, max, def }) => {
 export function sanitizeCustom(raw) {
   const r = raw && typeof raw === 'object' ? raw : {};
   const out = {
+    // 제어 문자와 꺾쇠 제거 (의도적인 제어문자 정규식)
+    // eslint-disable-next-line no-control-regex
     name: String(r.name ?? '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 40) || 'Custom',
     type: r.type === 'track' ? 'track' : 'click',
   };

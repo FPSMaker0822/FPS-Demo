@@ -142,3 +142,65 @@ export function record(data, r) {
 export function bestFor(data, scenarioId, difficulty, duration, mode) {
   return data.best[recordKey(scenarioId, difficulty, duration, mode)] || null;
 }
+
+// ───────────────────────── 백업 가져오기 (다른 PC의 기록 합치기)
+const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const KEY_RE = /^[a-z0-9-]{1,40}(\|[a-z]{1,10}(\|\d{1,4})?)?$/;
+
+function cleanEntry(e) {
+  if (!isObj(e)) return null;
+  const score = num(e.score), accuracy = num(e.accuracy), date = num(e.date);
+  if (score == null || accuracy == null || date == null) return null;
+  return { score: Math.max(0, Math.round(score)), accuracy: Math.min(1, Math.max(0, accuracy)), date };
+}
+
+/**
+ * 내보낸 JSON(다른 PC)의 기록을 현재 데이터에 합침. 설정은 건드리지 않음.
+ * 최고 기록은 더 높은 쪽, 히스토리/로그는 합쳐서 날짜순(중복 제거), 커스텀 시나리오는 없는 것만 추가.
+ * 반환: { added: 추가된 플레이 수 } — 형식이 맞지 않으면 예외
+ */
+export function mergeData(data, incoming, sanitizeCustom) {
+  if (!isObj(incoming) || (!isObj(incoming.best) && !Array.isArray(incoming.log))) throw new Error('invalid backup');
+  const before = data.log.length;
+
+  for (const [k, v] of Object.entries(isObj(incoming.best) ? incoming.best : {})) {
+    const e = cleanEntry(v);
+    if (!e || !KEY_RE.test(k)) continue;
+    if (!data.best[k] || e.score > data.best[k].score) data.best[k] = e;
+  }
+
+  const mergeList = (a, b, keyOf, limit) => {
+    const seen = new Set(a.map(keyOf));
+    for (const x of b) if (!seen.has(keyOf(x))) (seen.add(keyOf(x)), a.push(x));
+    a.sort((x, y) => x.date - y.date);
+    while (a.length > limit) a.shift();
+    return a;
+  };
+
+  for (const [k, list] of Object.entries(isObj(incoming.history) ? incoming.history : {})) {
+    if (!KEY_RE.test(k) || !Array.isArray(list)) continue;
+    const clean = list.map(cleanEntry).filter(Boolean);
+    data.history[k] = mergeList(data.history[k] || [], clean, (e) => `${e.date}|${e.score}`, 30);
+  }
+
+  const logIn = (Array.isArray(incoming.log) ? incoming.log : [])
+    .map((e) => (isObj(e) && typeof e.id === 'string' && /^[a-z0-9-]{1,40}$/.test(e.id) ? { id: e.id, ...cleanEntry(e) } : null))
+    .filter((e) => e && e.date != null);
+  mergeList(data.log, logIn, (e) => `${e.id}|${e.date}`, 500);
+
+  for (const [k, v] of Object.entries(isObj(incoming.bench) ? incoming.bench : {})) {
+    const s = num(v);
+    if (s == null || !/^[a-z]{1,20}$/.test(k)) continue;
+    if (data.bench[k] == null || s > data.bench[k]) data.bench[k] = Math.round(s);
+  }
+
+  if (Array.isArray(incoming.customs) && sanitizeCustom) {
+    const ids = new Set(data.customs.map((c) => c.id));
+    for (const c of incoming.customs) {
+      const s = sanitizeCustom(c);
+      if (s.id && !ids.has(s.id)) (ids.add(s.id), data.customs.push(s));
+    }
+  }
+  return { added: data.log.length - before };
+}
