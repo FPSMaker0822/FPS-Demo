@@ -1,9 +1,10 @@
-// UI 연결: 메뉴, 설정, 결과, 루틴 진행
-import { World } from './world.js';
+// UI 연결: 메뉴(플레이/루틴/기록), 설정, 결과, 루틴 진행
+import { World, THEMES } from './world.js';
 import { Sfx } from './audio.js';
 import { Game } from './game.js';
 import { Hud, drawCrosshair } from './hud.js';
-import { SCENARIOS, ROUTINES, DIFFICULTY } from './scenarios.js';
+import { SCENARIOS, ROUTINES, DIFFICULTY, CATEGORIES } from './scenarios.js';
+import { TARGET_KINDS, PALETTE } from './targets.js';
 import * as store from './storage.js';
 
 const $ = (id) => document.getElementById(id);
@@ -28,6 +29,21 @@ const game = new Game({
 
 let routine = null; // { def, index, results }
 let lastRun = null; // { id, duration }
+let catFilter = 'all';
+
+// ───────────────────────── 아이콘
+const ICONS = {
+  click: '<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="20"/><circle cx="32" cy="32" r="4" class="fill"/><path d="M32 4v12M32 48v12M4 32h12M48 32h12"/></svg>',
+  track: '<svg viewBox="0 0 64 64"><path d="M4 40c8 0 8-16 16-16s8 16 16 16 8-16 16-16 8 8 8 8"/><circle cx="36" cy="40" r="5" class="fill"/></svg>',
+  switch: '<svg viewBox="0 0 64 64"><circle cx="14" cy="44" r="6"/><circle cx="32" cy="18" r="6"/><circle cx="50" cy="42" r="6"/><path d="M18 38l9-14M37 23l9 13" stroke-dasharray="3 4"/></svg>',
+  reaction: '<svg viewBox="0 0 64 64"><path d="M36 4L12 36h16l-4 24 24-32H32z"/></svg>',
+  play: '<svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z" class="fill"/></svg>',
+};
+const KIND_ART = {
+  bot: (c) => `<svg viewBox="0 0 60 60"><circle cx="30" cy="13" r="8" fill="${c}"/><rect x="19" y="23" width="22" height="34" rx="11" fill="${c}"/><rect x="20" y="26" width="20" height="3" rx="1.5" fill="#0d1020"/></svg>`,
+  orb: (c) => `<svg viewBox="0 0 60 60"><circle cx="30" cy="30" r="22" fill="${c}" opacity=".25"/><circle cx="30" cy="30" r="15" fill="${c}"/><circle cx="25" cy="25" r="4" fill="#fff" opacity=".5"/></svg>`,
+  balloon: (c) => `<svg viewBox="0 0 60 60"><ellipse cx="30" cy="25" rx="15" ry="18" fill="${c}"/><path d="M27 44l3-3 3 3z" fill="${c}"/><circle cx="24" cy="18" r="4" fill="#fff" opacity=".45"/></svg>`,
+};
 
 // ───────────────────────── 화면 전환
 const screens = ['menu', 'pause', 'results', 'settings'];
@@ -42,32 +58,42 @@ function only(id) {
   if (id) show(id);
 }
 
+function showPage(name) {
+  for (const p of ['play', 'routines', 'stats']) $('page-' + p).classList.toggle('hidden', p !== name);
+  for (const b of document.querySelectorAll('.nav-item[data-page]')) b.classList.toggle('on', b.dataset.page === name);
+  if (name === 'stats') renderStats();
+}
+for (const b of document.querySelectorAll('.nav-item[data-page]')) b.onclick = () => showPage(b.dataset.page);
+
 // ───────────────────────── 설정 적용
+function fireLabel() {
+  return settings.fireKey ? `좌클릭 / ${bindLabel(settings.fireKey)}` : '좌클릭';
+}
+
 function applySettings() {
   world.setFov(settings.fov);
+  if (world.theme !== settings.theme) world.setTheme(settings.theme);
   sfx.setVolume(settings.volume);
   hud.setCrosshair(settings.crosshair);
   hud.showFps(settings.showFps);
   game.dpc = store.degPerCount(settings);
   const preset = store.SENS_PRESETS[settings.sensGame];
   const cm = store.cm360(settings);
-  $('sens-chip').innerHTML =
-    settings.sensGame === 'cm360'
-      ? `🖱 <b>${cm.toFixed(1)} cm/360</b> · ${settings.dpi} DPI`
-      : `🖱 ${preset.label} <b>${store.fmtSens(store.getSens(settings))}</b> · ${settings.dpi} DPI · ${cm.toFixed(1)} cm/360`;
-  const fire = settings.fireKey ? `좌클릭 / ${bindLabel(settings.fireKey)}` : '좌클릭';
-  $('footnote').textContent = `${fire} 사격 · ESC 일시정지 · R 재시작 · 기록은 이 브라우저에 저장됩니다`;
-  $('hud-hint').textContent = `${fire} 사격 · ESC 일시정지 · R 즉시 재시작`;
+  $('side-sens-value').textContent =
+    settings.sensGame === 'cm360' ? `${cm.toFixed(1)} cm/360` : `${preset.label} ${store.fmtSens(store.getSens(settings))}`;
+  $('side-sens-sub').textContent = `${settings.dpi} DPI · ${cm.toFixed(1)} cm/360 · FOV ${Math.round(settings.fov)}°`;
+  $('footnote').textContent = `${fireLabel()} 사격 · ESC 일시정지 · R 재시작 · 기록은 이 브라우저에 저장됩니다`;
+  $('hud-hint').textContent = `${fireLabel()} 사격 · ESC 일시정지 · R 즉시 재시작`;
   store.save(data);
 }
 
-// ───────────────────────── 메뉴
+// ───────────────────────── 플레이 페이지
 function renderSeg(id, value, onPick) {
-  const seg = $(id);
-  for (const b of seg.querySelectorAll('button')) {
+  for (const b of $(id).querySelectorAll('button')) {
     b.classList.toggle('on', b.dataset.v === String(value));
     b.onclick = () => {
       onPick(b.dataset.v);
+      store.save(data);
       renderMenu();
     };
   }
@@ -79,26 +105,83 @@ function fmtBest(id) {
   return best ? `최고 ${best.score.toLocaleString()}` : '기록 없음';
 }
 
+function dayKey(t) {
+  const d = new Date(t);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function renderDashboard() {
+  const log = data.log;
+  const now = Date.now();
+  const week = log.filter((e) => now - e.date < 7 * 864e5).length;
+  $('st-plays').textContent = log.length.toLocaleString();
+  $('st-plays-sub').textContent = `최근 7일 ${week}판`;
+  const recent = log.slice(-10);
+  if (recent.length) {
+    const acc = recent.reduce((a, e) => a + e.accuracy, 0) / recent.length;
+    $('st-acc').textContent = `${(acc * 100).toFixed(1)}%`;
+    $('st-acc-bar').style.width = `${acc * 100}%`;
+  } else {
+    $('st-acc').textContent = '—';
+    $('st-acc-bar').style.width = '0';
+  }
+  // 연속 플레이 일수
+  const days = new Set(log.map((e) => dayKey(e.date)));
+  let streak = 0;
+  const d = new Date();
+  if (!days.has(dayKey(d))) d.setDate(d.getDate() - 1);
+  while (days.has(dayKey(d))) {
+    streak++;
+    d.setDate(d.getDate() - 1);
+  }
+  $('st-streak').textContent = `${streak}일`;
+  $('st-streak-sub').textContent = days.has(dayKey(Date.now())) ? '오늘 플레이 완료 🔥' : '오늘 플레이해서 기록을 이어가세요';
+
+  const r = ROUTINES.find((x) => x.featured) || ROUTINES[0];
+  const mins = Math.round(r.steps.reduce((a, [, s]) => a + (s || 20), 0) / 60);
+  $('hero').innerHTML = `
+    <div class="hero-top"><span class="hero-tag">추천 루틴 · 약 ${mins}분</span></div>
+    <div class="hero-title">${r.name}</div>
+    <div class="hero-steps">${r.steps.map(([id]) => `<span>${SCENARIOS[id].name}</span>`).join('')}</div>
+    <button class="btn primary" id="hero-start">루틴 시작</button>`;
+  $('hero-start').onclick = () => startRoutine(r);
+}
+
 function renderMenu() {
-  renderSeg('seg-duration', settings.duration, (v) => {
-    settings.duration = Number(v);
-    store.save(data);
+  renderSeg('seg-duration', settings.duration, (v) => (settings.duration = Number(v)));
+  renderSeg('seg-diff', settings.difficulty, (v) => (settings.difficulty = v));
+  renderSeg('seg-kind', settings.targetKind, (v) => {
+    settings.targetKind = v;
+    game.refreshDecor();
   });
-  renderSeg('seg-diff', settings.difficulty, (v) => {
-    settings.difficulty = v;
-    store.save(data);
-  });
+  renderDashboard();
+
+  const chips = [['all', '전체', null], ...Object.entries(CATEGORIES).map(([k, c]) => [k, c.label, c.color])];
+  $('cat-filter').innerHTML = chips
+    .map(([k, l, c]) => `<button class="chip ${catFilter === k ? 'on' : ''}" data-cat="${k}">${c ? `<i style="background:${c}"></i>` : ''}${l}</button>`)
+    .join('');
+  for (const b of $('cat-filter').querySelectorAll('.chip')) {
+    b.onclick = () => {
+      catFilter = b.dataset.cat;
+      renderMenu();
+    };
+  }
 
   const grid = $('scenario-grid');
   grid.textContent = '';
   for (const [id, def] of Object.entries(SCENARIOS)) {
+    if (catFilter !== 'all' && def.cat !== catFilter) continue;
+    const cat = CATEGORIES[def.cat];
     const card = document.createElement('button');
     card.className = 'card';
+    card.style.setProperty('--c', cat.color);
     card.innerHTML = `
-      <div class="card-top"><span class="card-icon">${def.icon}</span><span class="card-tag">${def.tag}</span></div>
-      <div class="card-name">${def.name}</div>
-      <div class="card-desc">${def.desc}</div>
-      <div class="card-best">${def.mode === 'rounds' ? '10라운드 · ' : ''}${fmtBest(id)}</div>`;
+      <div class="card-art"><span class="cat">${def.tag}</span>${ICONS[def.cat]}</div>
+      <div class="card-body">
+        <div class="card-name">${def.name}</div>
+        <div class="card-desc">${def.desc}</div>
+        <div class="card-foot"><span class="card-best">${def.mode === 'rounds' ? '10라운드 · ' : ''}${fmtBest(id)}</span><span class="card-play">${ICONS.play}</span></div>
+      </div>`;
     card.onclick = () => {
       routine = null;
       startRun(id, settings.duration);
@@ -112,19 +195,63 @@ function renderMenu() {
     const card = document.createElement('button');
     card.className = 'card routine';
     const total = r.steps.reduce((a, [, d]) => a + (d || 20), 0);
+    card.style.setProperty('--c', r.featured ? '#2ef2b0' : '#4f8cff');
     card.innerHTML = `
-      <div class="card-top"><span class="card-icon">${r.icon}</span><span class="card-tag">약 ${Math.round(total / 60)}분 · ${r.steps.length}단계</span></div>
-      <div class="card-name">${r.name}</div>
-      <div class="card-desc">${r.desc}</div>
-      <ol class="steps">${r.steps
-        .map(([id, d]) => `<li>${SCENARIOS[id].name}<span>${d ? d + '초' : '10라운드'}</span></li>`)
-        .join('')}</ol>`;
-    card.onclick = () => {
-      routine = { def: r, index: 0, results: [] };
-      startRoutineStep();
-    };
+      <div class="card-art"><span class="cat">약 ${Math.round(total / 60)}분 · ${r.steps.length}단계</span>${ICONS.click}</div>
+      <div class="card-body">
+        <div class="card-name">${r.icon} ${r.name}</div>
+        <div class="card-desc">${r.desc}</div>
+        <ol class="steps">${r.steps.map(([id, d]) => `<li><b>${SCENARIOS[id].name}</b><span>${d ? d + '초' : '10라운드'}</span></li>`).join('')}</ol>
+      </div>`;
+    card.onclick = () => startRoutine(r);
     rg.appendChild(card);
   }
+}
+
+// ───────────────────────── 기록 페이지
+function sparkInto(canvas, values, color) {
+  const w = canvas.clientWidth || 120, h = canvas.clientHeight || 30;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  const x = canvas.getContext('2d');
+  x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (values.length < 2) return;
+  const max = Math.max(...values), min = Math.min(...values);
+  const px = (i) => 3 + (i / (values.length - 1)) * (w - 6);
+  const py = (v) => h - 4 - (max === min ? 0.5 : (v - min) / (max - min)) * (h - 8);
+  x.strokeStyle = color;
+  x.lineWidth = 1.8;
+  x.lineJoin = 'round';
+  x.beginPath();
+  values.forEach((v, i) => (i ? x.lineTo(px(i), py(v)) : x.moveTo(px(i), py(v))));
+  x.stroke();
+}
+
+function renderStats() {
+  const log = data.log;
+  $('stats-lede').textContent = log.length ? `총 ${log.length}판의 기록 (이 브라우저 기준)` : '아직 기록이 없어요. 시나리오를 한 판 플레이해 보세요!';
+  const rows = [];
+  for (const [id, def] of Object.entries(SCENARIOS)) {
+    const es = log.filter((e) => e.id === id);
+    const last = es[es.length - 1];
+    const best = es.length ? Math.max(...es.map((e) => e.score)) : null;
+    rows.push(`<tr>
+      <td><span class="cat-dot" style="background:${CATEGORIES[def.cat].color}"></span>${def.name}</td>
+      <td class="${best == null ? 'dim' : ''}">${best == null ? '—' : best.toLocaleString()}</td>
+      <td class="${last ? '' : 'dim'}">${last ? last.score.toLocaleString() : '—'}</td>
+      <td class="${last ? '' : 'dim'}">${last ? (last.accuracy * 100).toFixed(1) + '%' : '—'}</td>
+      <td class="${es.length ? '' : 'dim'}">${es.length}</td>
+      <td><canvas data-spark="${id}"></canvas></td>
+    </tr>`);
+  }
+  $('stats-body').innerHTML = rows.join('');
+  requestAnimationFrame(() => {
+    for (const c of document.querySelectorAll('canvas[data-spark]')) {
+      const id = c.dataset.spark;
+      sparkInto(c, log.filter((e) => e.id === id).slice(-15).map((e) => e.score), CATEGORIES[SCENARIOS[id].cat].color);
+    }
+  });
 }
 
 // ───────────────────────── 실행
@@ -136,6 +263,11 @@ function startRun(id, duration) {
   game.begin(id, { duration, difficulty: settings.difficulty, routineText });
   game.requestLock();
   $('pause-hint').textContent = '화면을 클릭하거나 계속하기를 누르세요';
+}
+
+function startRoutine(r) {
+  routine = { def: r, index: 0, results: [] };
+  startRoutineStep();
 }
 
 function startRoutineStep() {
@@ -152,11 +284,12 @@ function statCells(r) {
     ['정확도', pct(r.accuracy)],
     [r.metric === 'track' ? '명중 / 판정' : '명중 / 발사', `${r.hits} / ${r.shots}`],
   ];
+  if (r.headshotRate != null) cells.push(['헤드샷 비율', pct(r.headshotRate)]);
   if (r.metric === 'kill') {
     cells.push(['평균 처치 시간', fmtMs(r.avgKill)], ['처치 수', String(r.kills)], ['최고 연속', String(r.maxStreak)]);
-    if (r.scenarioId === 'precision') cells.push(['놓친 풍선', String(r.expired)]);
+    if (r.scenarioId === 'precision') cells.push(['놓친 타겟', String(r.expired)]);
   } else if (r.metric === 'track') {
-    cells.push(['터트린 풍선', String(r.pops)]);
+    cells.push(['처치한 타겟', String(r.pops)]);
   } else if (r.metric === 'reaction') {
     cells.push(
       ['평균 반응 속도', r.avgReaction == null ? '—' : `${Math.round(r.avgReaction)}ms`],
@@ -164,13 +297,13 @@ function statCells(r) {
       ['부정 출발', String(r.falseStarts)]
     );
   } else if (r.metric === 'rise') {
-    cells.push(['터트린 풍선', String(r.kills)], ['놓친 풍선', String(r.expired)], ['최고 연속', String(r.maxStreak)]);
+    cells.push(['처치 수', String(r.kills)], ['놓친 타겟', String(r.expired)], ['최고 연속', String(r.maxStreak)]);
   }
   return cells;
 }
 
 function drawSpark(canvas, hist) {
-  const w = canvas.clientWidth || 400, h = canvas.clientHeight || 70;
+  const w = canvas.clientWidth || 400, h = canvas.clientHeight || 72;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = w * dpr;
   canvas.height = h * dpr;
@@ -179,26 +312,29 @@ function drawSpark(canvas, hist) {
   x.clearRect(0, 0, w, h);
   const css = getComputedStyle(document.documentElement);
   const accent = css.getPropertyValue('--accent').trim();
-  const line = css.getPropertyValue('--line').trim();
   const muted = css.getPropertyValue('--muted').trim();
   const pts = hist.slice(-20).map((e) => e.score);
   if (pts.length < 2) {
     x.fillStyle = muted;
-    x.font = '13px system-ui, sans-serif';
+    x.font = '13px Pretendard, system-ui, sans-serif';
     x.textAlign = 'center';
     x.fillText('기록이 쌓이면 추이가 표시됩니다', w / 2, h / 2 + 4);
     return;
   }
   const max = Math.max(...pts), min = Math.min(...pts);
-  const pad = 8;
+  const pad = 10;
   const px = (i) => pad + (i / (pts.length - 1)) * (w - pad * 2);
   const py = (v) => h - pad - (max === min ? 0.5 : (v - min) / (max - min)) * (h - pad * 2);
-  x.strokeStyle = line;
-  x.lineWidth = 1;
+  const grad = x.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, 'rgba(46,242,176,0.25)');
+  grad.addColorStop(1, 'rgba(46,242,176,0)');
   x.beginPath();
-  x.moveTo(pad, h - pad + 0.5);
-  x.lineTo(w - pad, h - pad + 0.5);
-  x.stroke();
+  pts.forEach((v, i) => (i ? x.lineTo(px(i), py(v)) : x.moveTo(px(i), py(v))));
+  x.lineTo(px(pts.length - 1), h);
+  x.lineTo(px(0), h);
+  x.closePath();
+  x.fillStyle = grad;
+  x.fill();
   x.strokeStyle = accent;
   x.lineWidth = 2;
   x.lineJoin = 'round';
@@ -217,7 +353,7 @@ let enterAction = null;
 function showResults(r) {
   const rec = store.record(data, r);
   $('res-name').textContent = r.name;
-  $('res-meta').textContent = `${DIFFICULTY[r.difficulty].label} · ${r.duration ? r.duration + '초' : '10라운드'}`;
+  $('res-meta').textContent = `${DIFFICULTY[r.difficulty].label} · ${r.duration ? r.duration + '초' : '10라운드'} · ${TARGET_KINDS[r.kind].label}`;
   $('res-score').textContent = r.score.toLocaleString();
   $('res-badge').classList.toggle('hidden', !rec.isBest || rec.prevBest == null);
   $('res-prev').textContent =
@@ -234,15 +370,14 @@ function showResults(r) {
     const rows = routine.def.steps
       .map(([id], i) => {
         const x = routine.results[i];
-        const cls = i === routine.index ? 'cur' : '';
-        return `<tr class="${cls}"><td>${i + 1}. ${SCENARIOS[id].name}</td><td>${x ? x.score.toLocaleString() : '—'}</td><td>${
-          x ? pct(x.accuracy) : '—'
-        }</td></tr>`;
+        return `<tr class="${i === routine.index ? 'cur' : ''}"><td>${i + 1}. ${SCENARIOS[id].name}</td><td>${
+          x ? x.score.toLocaleString() : '—'
+        }</td><td>${x ? pct(x.accuracy) : '—'}</td></tr>`;
       })
       .join('');
     const done = routine.results.filter(Boolean);
     const total = done.reduce((a, x) => a + x.score, 0);
-    rr.innerHTML = `<div class="muted small-label">${routine.def.name} ${hasNext ? '진행 중' : '완료!'}</div>
+    rr.innerHTML = `<div class="small-label">${routine.def.name} ${hasNext ? '진행 중' : '완료!'}</div>
       <table class="routine-table"><thead><tr><th>단계</th><th>점수</th><th>정확도</th></tr></thead><tbody>${rows}</tbody>
       <tfoot><tr><td>합계</td><td>${total.toLocaleString()}</td><td>${
         done.length ? pct(done.reduce((a, x) => a + x.accuracy, 0) / done.length) : '—'
@@ -272,8 +407,7 @@ function showResults(r) {
 
 function retry() {
   if (routine && routine.index >= routine.def.steps.length - 1 && routine.results.length === routine.def.steps.length) {
-    routine = { def: routine.def, index: 0, results: [] };
-    startRoutineStep();
+    startRoutine(routine.def);
   } else if (lastRun) {
     startRun(lastRun.id, lastRun.duration);
   }
@@ -310,12 +444,19 @@ $('pause-restart').onclick = () => {
   game.restart();
 };
 $('pause-menu').onclick = toMenu;
-$('pause-settings').onclick = openSettings;
+$('pause-settings').onclick = () => openSettings();
 $('pause').addEventListener('click', (e) => {
   if (e.target.id === 'pause') game.resume();
 });
 
-// ───────────────────────── 설정 모달
+// ───────────────────────── 설정: 탭
+function showTab(name) {
+  for (const b of $('settings-tabs').querySelectorAll('button')) b.classList.toggle('on', b.dataset.tab === name);
+  for (const t of document.querySelectorAll('.tab-body')) t.classList.toggle('hidden', t.dataset.tab !== name);
+}
+for (const b of $('settings-tabs').querySelectorAll('button')) b.onclick = () => showTab(b.dataset.tab);
+
+// 설정: 감도
 const setGame = $('set-game');
 for (const [k, p] of Object.entries(store.SENS_PRESETS)) {
   const o = document.createElement('option');
@@ -329,7 +470,6 @@ function fillSettings() {
   $('set-sens').value = store.fmtSens(store.getSens(settings));
   $('set-dpi').value = settings.dpi;
   $('set-fov').value = settings.fov;
-  $('set-color').value = settings.balloonColor;
   $('set-vol').value = Math.round(settings.volume * 100);
   $('set-fps').checked = settings.showFps;
   const ch = settings.crosshair;
@@ -343,9 +483,8 @@ function fillSettings() {
 }
 
 function updateSettingsReadouts() {
-  const game = settings.sensGame;
-  const preset = store.SENS_PRESETS[game];
-  $('set-sens-label').textContent = game === 'cm360' ? 'cm/360' : `${preset.label} 감도`;
+  const preset = store.SENS_PRESETS[settings.sensGame];
+  $('set-sens-label').textContent = settings.sensGame === 'cm360' ? 'cm/360' : `${preset.label} 감도`;
   $('set-fov').value = settings.fov;
   $('set-fov-v').textContent = `${Math.round(settings.fov * 100) / 100}°`;
   $('set-vol-v').textContent = `${Math.round(settings.volume * 100)}%`;
@@ -361,9 +500,16 @@ function updateSettingsReadouts() {
     fovBtn.textContent = same ? `✓ ${preset.label} 시야각 적용됨 (${preset.fov}°)` : `${preset.label} 시야각 적용 (${preset.fov}°)`;
     fovBtn.disabled = same;
   }
-  drawCrosshair($('ch-preview'), settings.crosshair, 120);
+  drawCrosshair($('ch-preview'), settings.crosshair, 180);
   renderSensTable();
-  $('fire-key-btn').textContent = capturing ? '키나 마우스 버튼을 누르세요… (Esc 취소)' : settings.fireKey ? bindLabel(settings.fireKey) : '+ 추가 발사 키 지정';
+  renderThemeGrid();
+  renderKindGrid();
+  renderSwatches();
+  $('fire-key-btn').textContent = capturing
+    ? '키나 마우스 버튼을 누르세요… (Esc 취소)'
+    : settings.fireKey
+    ? bindLabel(settings.fireKey)
+    : '+ 추가 발사 키 지정';
   $('fire-key-btn').classList.toggle('capturing', capturing);
   $('fire-key-clear').classList.toggle('hidden', !settings.fireKey);
 }
@@ -374,13 +520,12 @@ function renderSensTable() {
     if (k === 'cm360') continue;
     const saved = settings.sensByGame[k];
     const has = Number(saved) > 0;
-    const conv = store.convertTo(settings, k);
     const active = k === settings.sensGame;
     rows.push(`<tr data-game="${k}" class="${active ? 'active' : ''}">
       <td>${active ? '▶ ' : ''}${p.label}</td>
       <td class="${has ? '' : 'unset'}">${has ? store.fmtSens(Number(saved)) : '미설정'}</td>
       <td>${has ? store.cm360(settings, k).toFixed(1) : '—'}</td>
-      <td>${store.fmtSens(conv)}</td>
+      <td>${store.fmtSens(store.convertTo(settings, k))}</td>
       <td>${active ? '' : `<button class="btn ghost small-btn" data-copy="${k}" title="현재 감도와 같은 회전량으로 저장">환산값 저장</button>`}</td>
     </tr>`);
   }
@@ -400,13 +545,13 @@ $('sens-table').addEventListener('click', (e) => {
   if (row) switchGame(row.dataset.game);
 });
 
-function switchGame(game) {
+function switchGame(g) {
   // 처음 고르는 게임이면 지금 감도와 같은 회전량으로 시작
-  if (!(Number(settings.sensByGame[game]) > 0)) {
-    settings.sensByGame[game] = Number(store.fmtSens(store.convertTo(settings, game)));
+  if (!(Number(settings.sensByGame[g]) > 0)) {
+    settings.sensByGame[g] = Number(store.fmtSens(store.convertTo(settings, g)));
   }
-  settings.sensGame = game;
-  setGame.value = game;
+  settings.sensGame = g;
+  setGame.value = g;
   $('set-sens').value = store.fmtSens(store.getSens(settings));
   applySettings();
   updateSettingsReadouts();
@@ -421,12 +566,74 @@ $('apply-fov').onclick = () => {
   }
 };
 
+// 설정: 배경 테마 / 타겟
+function renderThemeGrid() {
+  $('theme-grid').innerHTML = Object.entries(THEMES)
+    .map(([k, t]) => {
+      const [a, b, c] = t.swatch;
+      const bg = `linear-gradient(180deg, ${a} 0%, ${a} 55%, ${b} 100%)`;
+      const grid = `repeating-linear-gradient(90deg, transparent 0 17px, ${c}33 17px 18px), repeating-linear-gradient(0deg, transparent 0 17px, ${c}22 17px 18px)`;
+      return `<button class="option-card ${settings.theme === k ? 'on' : ''}" data-theme="${k}">
+        <div class="option-preview" style="background:${grid}, ${bg}"><div style="position:absolute;left:0;right:0;bottom:22px;height:2px;background:${c}"></div></div>
+        <div class="option-name">${t.label}</div></button>`;
+    })
+    .join('');
+}
+$('theme-grid').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-theme]');
+  if (!b) return;
+  settings.theme = b.dataset.theme;
+  applySettings();
+  updateSettingsReadouts();
+});
+
+function kindColor(kind) {
+  const c = settings.targetColor;
+  if (c === 'auto' || !c) return TARGET_KINDS[kind].color === 'rainbow' ? PALETTE[0] : TARGET_KINDS[kind].color;
+  return c === 'rainbow' ? PALETTE[2] : c;
+}
+function renderKindGrid() {
+  $('kind-grid').innerHTML = Object.entries(TARGET_KINDS)
+    .map(
+      ([k, t]) => `<button class="option-card ${settings.targetKind === k ? 'on' : ''}" data-kind="${k}">
+        <div class="option-preview">${KIND_ART[k](kindColor(k))}</div>
+        <div class="option-name">${t.label}</div><div class="option-desc">${t.desc}</div></button>`
+    )
+    .join('');
+}
+$('kind-grid').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-kind]');
+  if (!b) return;
+  settings.targetKind = b.dataset.kind;
+  game.refreshDecor();
+  applySettings();
+  updateSettingsReadouts();
+  renderMenu();
+});
+
+const COLORS = ['auto', 'rainbow', '#ff3d5a', '#ff8a3d', '#ffd23d', '#2ef2b0', '#3fb8ff', '#4f6bff', '#b57bff', '#ff5cc8', '#ffffff'];
+function renderSwatches() {
+  $('color-swatches').innerHTML = COLORS.map((c) => {
+    const on = settings.targetColor === c ? 'on' : '';
+    if (c === 'auto') return `<button class="swatch auto ${on}" data-color="auto">자동</button>`;
+    if (c === 'rainbow')
+      return `<button class="swatch ${on}" data-color="rainbow" title="무지개" style="background:conic-gradient(${PALETTE.join(',')},${PALETTE[0]})"></button>`;
+    return `<button class="swatch ${on}" data-color="${c}" style="background:${c}"></button>`;
+  }).join('');
+}
+$('color-swatches').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-color]');
+  if (!b) return;
+  settings.targetColor = b.dataset.color;
+  game.refreshDecor();
+  applySettings();
+  updateSettingsReadouts();
+});
+
 function readSettings(e) {
   const id = e && e.target && e.target.id;
-  if (id === 'set-game') {
-    switchGame(setGame.value);
-    return;
-  }
+  if (!id) return;
+  if (id === 'set-game') return switchGame(setGame.value);
   if (id === 'set-sens') {
     const v = parseFloat($('set-sens').value);
     if (v > 0) settings.sensByGame[settings.sensGame] = v;
@@ -436,7 +643,6 @@ function readSettings(e) {
     if (dpi >= 50) settings.dpi = dpi;
   }
   settings.fov = Number($('set-fov').value);
-  settings.balloonColor = $('set-color').value;
   settings.volume = Number($('set-vol').value) / 100;
   settings.showFps = $('set-fps').checked;
   Object.assign(settings.crosshair, {
@@ -450,6 +656,8 @@ function readSettings(e) {
   applySettings();
   updateSettingsReadouts();
 }
+$('settings').addEventListener('input', readSettings);
+$('settings').addEventListener('change', readSettings);
 
 // ───────────────────────── 추가 발사 키 지정
 let capturing = false;
@@ -458,7 +666,10 @@ function bindLabel(b) {
   if (!b) return '';
   if (b.type === 'mouse') return MOUSE_NAMES[b.button] || `마우스 ${b.button + 1}`;
   const c = b.code;
-  const map = { Space: 'Space', ShiftLeft: '왼쪽 Shift', ShiftRight: '오른쪽 Shift', ControlLeft: '왼쪽 Ctrl', ControlRight: '오른쪽 Ctrl', AltLeft: '왼쪽 Alt', AltRight: '오른쪽 Alt', CapsLock: 'Caps Lock', Tab: 'Tab', Enter: 'Enter', Backquote: '`' };
+  const map = {
+    Space: 'Space', ShiftLeft: '왼쪽 Shift', ShiftRight: '오른쪽 Shift', ControlLeft: '왼쪽 Ctrl', ControlRight: '오른쪽 Ctrl',
+    AltLeft: '왼쪽 Alt', AltRight: '오른쪽 Alt', CapsLock: 'Caps Lock', Tab: 'Tab', Enter: 'Enter', Backquote: '`',
+  };
   if (map[c]) return map[c];
   return c.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Numpad/, 'Num ');
 }
@@ -513,11 +724,10 @@ document.addEventListener('contextmenu', (e) => {
   if (capturing) e.preventDefault();
 });
 
-$('settings').addEventListener('input', readSettings);
-$('settings').addEventListener('change', readSettings);
-
-function openSettings() {
+// ───────────────────────── 설정 모달 열고 닫기
+function openSettings(tab) {
   fillSettings();
+  if (typeof tab === 'string') showTab(tab);
   show('settings');
 }
 function closeSettings() {
@@ -525,8 +735,8 @@ function closeSettings() {
   hide('settings');
   renderMenu();
 }
-$('btn-settings').onclick = openSettings;
-$('sens-chip').onclick = openSettings;
+$('nav-settings').onclick = () => openSettings();
+$('side-sens').onclick = () => openSettings('sens');
 $('settings-close').onclick = closeSettings;
 $('settings-done').onclick = closeSettings;
 $('settings').addEventListener('click', (e) => {
@@ -536,6 +746,7 @@ $('reset-records').onclick = () => {
   if (confirm('모든 최고 기록과 히스토리를 삭제할까요?')) {
     store.resetRecords(data);
     renderMenu();
+    renderStats();
   }
 };
 

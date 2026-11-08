@@ -1,6 +1,6 @@
 // 게임 루프, 입력(포인터 락), 상태 머신
 import * as THREE from '../vendor/three.module.min.js';
-import { Balloon, Effects, rayHit, PALETTE } from './targets.js';
+import { Target, Effects, rayHit, PALETTE, TARGET_KINDS, bottomOffsetFor } from './targets.js';
 import { SCENARIOS, DIFFICULTY } from './scenarios.js';
 import { EYE_HEIGHT } from './world.js';
 
@@ -178,6 +178,7 @@ export class Game {
     this.clearDecor();
     this.hud.clearFloats();
     this.scenarioId = scenarioId;
+    this.kind = this.getSettings().targetKind || 'bot';
     this.def = SCENARIOS[scenarioId];
     this.duration = duration;
     this.difficulty = difficulty;
@@ -185,7 +186,7 @@ export class Game {
     this.routineText = routineText;
     this.stats = {
       shots: 0, hits: 0, misses: 0, score: 0, streak: 0, maxStreak: 0,
-      killTimes: [], reactionTimes: [], expired: 0, falseStarts: 0, pops: 0,
+      killTimes: [], reactionTimes: [], expired: 0, falseStarts: 0, pops: 0, headshots: 0,
     };
     this.time = 0;
     this.yaw = 0;
@@ -254,6 +255,8 @@ export class Game {
       expired: s.expired,
       falseStarts: s.falseStarts,
       pops: s.pops,
+      kind: this.kind,
+      headshotRate: this.kind === 'bot' && !this.def.hold && s.hits ? s.headshots / s.hits : null,
       date: Date.now(),
     };
   }
@@ -269,18 +272,24 @@ export class Game {
     );
   }
 
-  nextColor() {
-    const c = this.getSettings().balloonColor;
-    if (c && c !== 'rainbow') return c;
+  nextColor(kind = this.kind) {
+    let c = this.getSettings().targetColor || 'auto';
+    if (c === 'auto') c = TARGET_KINDS[kind].color;
+    if (c !== 'rainbow') return c;
     return PALETTE[this.colorIndex++ % PALETTE.length];
+  }
+
+  /** 바닥에 서 있는 높이(봇) */
+  standY(r) {
+    return bottomOffsetFor(this.kind, r) + 0.02;
   }
 
   spawn(opts) {
     // 풍선이 바닥에 박히지 않도록 최소 높이 보장
     const r = opts.radius ?? 0.6;
-    const minY = r * 1.25 + 0.8;
+    const minY = bottomOffsetFor(this.kind, r) + (this.kind === 'bot' ? 0.02 : 0.8);
     if (opts.position.y < minY) opts.position.y = minY;
-    const b = new Balloon(this.world.scene, { color: this.nextColor(), ...opts });
+    const b = new Target(this.world.scene, { kind: this.kind, color: this.nextColor(), ...opts });
     b.spawnAt = this.time;
     this.targets.push(b);
     return b;
@@ -293,9 +302,22 @@ export class Game {
   }
 
   pop(b, points, text) {
-    this.effects.burst(b.position.clone(), b.color, b.hitRadius());
-    this.sfx.pop(b.radius);
-    this.addScore(points, b.position, text);
+    const head = b.kind === 'bot' && this.lastHead && !this.def.hold;
+    if (head) {
+      points = Math.round(points * 1.5);
+      if (!text) text = `HEADSHOT +${points}`;
+    }
+    const pos = b.position.clone();
+    if (b.kind === 'bot') {
+      this.effects.burst(pos.clone().setY(pos.y + b.radius * 0.6), b.color, b.radius, { count: 46, ring: false, height: b.radius * 2.4 });
+      this.sfx.kill(head);
+    } else {
+      this.effects.burst(pos, b.color, b.hitRadius(), { ring: b.kind === 'balloon' });
+      if (b.kind === 'balloon') this.sfx.pop(b.radius);
+      else this.sfx.kill(false);
+    }
+    const textPos = pos.setY(pos.y + b.topOffset() * 0.7);
+    this.addScore(points, textPos, text, head ? 'head' : undefined);
     this.remove(b);
   }
 
@@ -309,20 +331,24 @@ export class Game {
     this.remove(b);
   }
 
-  addScore(points, pos, text) {
+  addScore(points, pos, text, cls) {
     this.stats.score = Math.max(0, this.stats.score + points);
-    if (pos) this.hud.float(pos, this.camera, text || `+${points}`, points >= 170 ? 'great' : '');
+    if (pos) this.hud.float(pos, this.camera, text || `+${points}`, cls || (points >= 170 ? 'great' : ''));
   }
 
+  /** 화면 중앙 레이로 맞은 타겟 (헤드 여부는 this.lastHead) */
   raycast() {
     this.camera.updateMatrixWorld();
     this.camera.getWorldDirection(this._dir);
-    return rayHit(this.camera.position, this._dir, this.targets);
+    const h = rayHit(this.camera.position, this._dir, this.targets);
+    this.lastHead = !!(h && h.head);
+    return h ? h.target : null;
   }
 
   shoot() {
     if (this.state !== 'playing' || this.def.hold) return;
     const hit = this.raycast();
+    const head = this.lastHead;
     const r = this.scenario.onShoot?.(hit);
     if (r === 'skip') return;
     const s = this.stats;
@@ -331,7 +357,8 @@ export class Game {
       s.hits++;
       s.streak++;
       s.maxStreak = Math.max(s.maxStreak, s.streak);
-      this.hud.hitmarker();
+      if (head) s.headshots++;
+      this.hud.hitmarker(head);
     } else {
       s.misses++;
       s.streak = 0;
@@ -358,13 +385,18 @@ export class Game {
   // ───────────────────────── 메뉴 배경 장식 풍선
   initDecor() {
     if (this.decor.length) return;
-    for (let i = 0; i < 14; i++) {
-      const b = new Balloon(this.world.scene, {
-        position: new THREE.Vector3((Math.random() * 2 - 1) * 14, 1.5 + Math.random() * 14, -10 - Math.random() * 18),
-        radius: 0.5 + Math.random() * 0.5,
-        color: PALETTE[i % PALETTE.length],
-      });
+    const kind = this.getSettings().targetKind || 'bot';
+    this.decorKind = kind;
+    const n = kind === 'bot' ? 7 : 14;
+    for (let i = 0; i < n; i++) {
+      const r = kind === 'bot' ? 0.6 : 0.5 + Math.random() * 0.5;
+      const pos =
+        kind === 'bot'
+          ? new THREE.Vector3((i - (n - 1) / 2) * 3.2 + (Math.random() - 0.5), bottomOffsetFor('bot', r) + 0.02, -14 - Math.random() * 12)
+          : new THREE.Vector3((Math.random() * 2 - 1) * 14, 1.5 + Math.random() * 14, -10 - Math.random() * 18);
+      const b = new Target(this.world.scene, { kind, position: pos, radius: r, color: this.nextColor(kind) });
       b.data.speed = 0.5 + Math.random() * 0.7;
+      b.data.x0 = pos.x;
       this.decor.push(b);
     }
   }
@@ -372,6 +404,12 @@ export class Game {
   clearDecor() {
     for (const b of this.decor) b.dispose();
     this.decor = [];
+  }
+
+  refreshDecor() {
+    if (this.state !== 'idle' && this.state !== 'results') return;
+    this.clearDecor();
+    this.initDecor();
   }
 
   // ───────────────────────── 매 프레임
@@ -383,10 +421,15 @@ export class Game {
       this.camera.position.set(0, EYE_HEIGHT, 0);
       this.camera.rotation.set(0.1 + Math.sin(this.idleT * 0.13) * 0.05, Math.sin(this.idleT * 0.07) * 0.35, 0, 'YXZ');
       for (const b of this.decor) {
-        b.position.y += b.data.speed * dt;
-        if (b.position.y > 16) {
-          b.position.set((Math.random() * 2 - 1) * 14, 1.2, -10 - Math.random() * 18);
-          b.age = 0; // 다시 나타나는 애니메이션
+        if (b.kind === 'bot') {
+          // 봇: 제자리에서 좌우 스트레이프
+          b.position.x = b.data.x0 + Math.sin(this.idleT * b.data.speed * 1.6 + b.phase) * 1.2;
+        } else {
+          b.position.y += b.data.speed * dt;
+          if (b.position.y > 16) {
+            b.position.set((Math.random() * 2 - 1) * 14, 1.2, -10 - Math.random() * 18);
+            b.age = 0; // 다시 나타나는 애니메이션
+          }
         }
         b.update(dt);
       }

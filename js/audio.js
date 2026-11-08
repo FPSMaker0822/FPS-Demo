@@ -71,6 +71,16 @@ export class Sfx {
     this._tone(t, 'sine', 240, 60, 0.09, 0.45);
   }
 
+  /** 봇/구체 처치음. 헤드샷이면 더 높은 음 */
+  kill(head = false) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this._tone(t, 'triangle', head ? 1400 : 900, head ? 1900 : 700, 0.1, 0.22);
+    if (head) this._tone(t + 0.05, 'sine', 2100, 2100, 0.08, 0.12);
+    this._noise(t, 0.06, 'bandpass', 2600, 1, 0.3);
+    this._tone(t, 'sine', 170, 55, 0.11, 0.35);
+  }
+
   miss() {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;

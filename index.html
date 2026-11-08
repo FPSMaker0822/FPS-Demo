@@ -4,8 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>POPSHOT · 에임 트레이너</title>
-  <meta name="description" content="풍선을 터트리며 플릭, 트래킹, 반응속도를 연습하는 웹 FPS 에임 트레이너" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎈</text></svg>" />
+  <meta name="description" content="휴먼 봇 · 구체 · 풍선 타겟으로 플릭, 트래킹, 반응속도를 연습하는 웹 FPS 에임 트레이너" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='11' fill='none' stroke='%232ef2b0' stroke-width='3'/><circle cx='16' cy='16' r='3' fill='%232ef2b0'/></svg>" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -14,18 +15,24 @@
   <!-- 인게임 HUD -->
   <div id="hud" class="hidden">
     <div class="hud-top">
-      <div class="hud-box hud-left">
-        <div class="hud-label" id="hud-routine"></div>
-        <div class="hud-name" id="hud-name"></div>
+      <div class="hud-chip hud-left">
+        <span class="hud-dot"></span>
+        <div>
+          <div class="hud-label" id="hud-routine"></div>
+          <div class="hud-name" id="hud-name"></div>
+        </div>
       </div>
-      <div class="hud-box hud-center">
-        <div class="hud-label" id="hud-time-label">남은 시간</div>
-        <div class="hud-time" id="hud-time">60.0</div>
+      <div class="hud-center">
+        <div class="hud-time-row">
+          <span class="hud-label" id="hud-time-label">남은 시간</span>
+          <span class="hud-time" id="hud-time">60.0</span>
+        </div>
+        <div class="hud-progress"><i id="hud-progress"></i></div>
         <div class="hud-score" id="hud-score">0</div>
       </div>
-      <div class="hud-box hud-right">
-        <div><span class="hud-label">정확도</span> <b id="hud-acc">—</b></div>
-        <div><span class="hud-label">연속</span> <b id="hud-streak">0</b></div>
+      <div class="hud-chip hud-right">
+        <div class="hud-stat"><span class="hud-label">정확도</span><b id="hud-acc">—</b></div>
+        <div class="hud-stat"><span class="hud-label" id="hud-streak-label">연속</span><b id="hud-streak">0</b></div>
       </div>
     </div>
     <canvas id="crosshair"></canvas>
@@ -35,50 +42,95 @@
     <div id="hud-msg"></div>
     <div id="float-layer"></div>
     <div id="fps" class="hidden"></div>
-    <div class="hud-hint" id="hud-hint">ESC 일시정지 · R 즉시 재시작</div>
+    <div class="hud-hint" id="hud-hint"></div>
   </div>
 
   <!-- 메인 메뉴 -->
   <section id="menu" class="screen">
-    <div class="menu-inner">
-      <header class="brand">
-        <div>
-          <h1 class="logo">POP<span>SHOT</span></h1>
-          <p class="tagline">풍선을 터트리며 다듬는 FPS 에임 연습장</p>
-        </div>
-        <button class="btn ghost" id="btn-settings">⚙ 설정</button>
-      </header>
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark"><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" /><circle cx="16" cy="16" r="3" class="fill" /><path d="M16 1v7M16 24v7M1 16h7M24 16h7" /></svg></div>
+        <div class="brand-name">POP<span>SHOT</span></div>
+      </div>
+      <nav class="nav">
+        <button class="nav-item on" data-page="play"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="2" /></svg><span>플레이</span></button>
+        <button class="nav-item" data-page="routines"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7" /><path d="M17 15l4 3-4 3z" class="fill" /></svg><span>루틴</span></button>
+        <button class="nav-item" data-page="stats"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg><span>기록</span></button>
+        <button class="nav-item" id="nav-settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" /></svg><span>설정</span></button>
+      </nav>
+      <div class="side-card" id="side-sens">
+        <div class="side-label">감도</div>
+        <div class="side-value" id="side-sens-value"></div>
+        <div class="side-sub" id="side-sens-sub"></div>
+      </div>
+    </aside>
 
-      <div class="options-row">
-        <div class="opt">
-          <span class="opt-label">시간</span>
-          <div class="seg" id="seg-duration">
-            <button data-v="30">30초</button><button data-v="60">60초</button><button data-v="90">90초</button>
+    <main class="content">
+      <!-- 플레이 -->
+      <div class="page" id="page-play">
+        <header class="page-head">
+          <div>
+            <p class="eyebrow">AIM TRAINER</p>
+            <h1>오늘도 한 판, <span class="grad">에임 워밍업</span></h1>
           </div>
-        </div>
-        <div class="opt">
-          <span class="opt-label">난이도</span>
-          <div class="seg" id="seg-diff">
-            <button data-v="easy">쉬움</button><button data-v="normal">보통</button><button data-v="hard">어려움</button>
+          <div class="controls">
+            <div class="ctrl"><span>타겟</span><div class="seg" id="seg-kind"><button data-v="bot">휴먼 봇</button><button data-v="orb">구체</button><button data-v="balloon">풍선</button></div></div>
+            <div class="ctrl"><span>시간</span><div class="seg" id="seg-duration"><button data-v="30">30s</button><button data-v="60">60s</button><button data-v="90">90s</button></div></div>
+            <div class="ctrl"><span>난이도</span><div class="seg" id="seg-diff"><button data-v="easy">쉬움</button><button data-v="normal">보통</button><button data-v="hard">어려움</button></div></div>
           </div>
+        </header>
+
+        <div class="bento">
+          <div class="tile hero" id="hero"></div>
+          <div class="tile stat-tile"><div class="tile-label">총 플레이</div><div class="tile-value" id="st-plays">0</div><div class="tile-sub" id="st-plays-sub"></div></div>
+          <div class="tile stat-tile"><div class="tile-label">최근 10판 정확도</div><div class="tile-value" id="st-acc">—</div><div class="tile-bar"><i id="st-acc-bar"></i></div></div>
+          <div class="tile stat-tile"><div class="tile-label">연속 플레이</div><div class="tile-value" id="st-streak">0일</div><div class="tile-sub" id="st-streak-sub">오늘 플레이해서 기록을 이어가세요</div></div>
         </div>
-        <button class="sens-chip" id="sens-chip" title="감도 설정 열기"></button>
+
+        <div class="section-head">
+          <h2>시나리오</h2>
+          <div class="chips" id="cat-filter"></div>
+        </div>
+        <div id="scenario-grid" class="cards"></div>
+        <p class="footnote" id="footnote"></p>
+        <p class="footnote warn hidden" id="mobile-warn">이 게임은 마우스가 있는 PC 브라우저(Chrome / Edge / Firefox)에서 플레이하세요.</p>
       </div>
 
-      <h2 class="section-title">시나리오</h2>
-      <div id="scenario-grid" class="cards"></div>
+      <!-- 루틴 -->
+      <div class="page hidden" id="page-routines">
+        <header class="page-head">
+          <div>
+            <p class="eyebrow">ROUTINES</p>
+            <h1>루틴으로 <span class="grad">꾸준하게</span></h1>
+            <p class="lede">여러 시나리오를 연속으로 진행하고, 마지막에 합계와 단계별 결과를 보여줍니다.</p>
+          </div>
+        </header>
+        <div id="routine-grid" class="cards routines"></div>
+      </div>
 
-      <h2 class="section-title">루틴 <small>여러 시나리오를 연속으로</small></h2>
-      <div id="routine-grid" class="cards routines"></div>
-
-      <p class="footnote" id="footnote"></p>
-      <p class="footnote warn hidden" id="mobile-warn">이 게임은 마우스가 있는 PC 브라우저(Chrome / Edge / Firefox)에서 플레이하세요.</p>
-    </div>
+      <!-- 기록 -->
+      <div class="page hidden" id="page-stats">
+        <header class="page-head">
+          <div>
+            <p class="eyebrow">STATS</p>
+            <h1>나의 <span class="grad">기록</span></h1>
+            <p class="lede" id="stats-lede"></p>
+          </div>
+        </header>
+        <div class="tile table-tile">
+          <table class="stats-table">
+            <thead><tr><th>시나리오</th><th>최고 점수</th><th>최근 점수</th><th>최근 정확도</th><th>플레이</th><th>추이</th></tr></thead>
+            <tbody id="stats-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
   </section>
 
   <!-- 일시정지 -->
   <section id="pause" class="screen overlay hidden">
     <div class="panel small">
+      <p class="eyebrow">PAUSED</p>
       <h2>일시정지</h2>
       <p class="muted" id="pause-hint">화면을 클릭하거나 계속하기를 누르세요</p>
       <div class="btns col">
@@ -95,7 +147,7 @@
     <div class="panel">
       <div class="res-head">
         <div>
-          <div class="muted" id="res-meta"></div>
+          <p class="eyebrow" id="res-meta"></p>
           <h2 id="res-name"></h2>
         </div>
         <span class="badge hidden" id="res-badge">NEW BEST</span>
@@ -103,7 +155,7 @@
       <div class="res-score"><span id="res-score">0</span><small id="res-prev"></small></div>
       <div class="res-stats" id="res-stats"></div>
       <div class="spark-wrap">
-        <div class="muted small-label">최근 기록</div>
+        <div class="small-label">최근 기록</div>
         <canvas id="res-spark"></canvas>
       </div>
       <div id="res-routine" class="hidden"></div>
@@ -112,96 +164,100 @@
         <button class="btn primary" id="res-retry">다시 하기</button>
         <button class="btn ghost" id="res-menu">메뉴</button>
       </div>
-      <p class="muted kbd-hint">Enter: <span id="res-enter-label">다시 하기</span></p>
+      <p class="muted kbd-hint"><kbd>Enter</kbd> <span id="res-enter-label">다시 하기</span></p>
     </div>
   </section>
 
   <!-- 설정 -->
   <div id="settings" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-    <div class="panel wide">
+    <div class="panel wide settings-panel">
       <div class="modal-head">
         <h2 id="settings-title">설정</h2>
         <button class="btn ghost icon" id="settings-close" aria-label="닫기">✕</button>
       </div>
+      <div class="tabs" id="settings-tabs">
+        <button data-tab="sens" class="on">감도</button>
+        <button data-tab="visual">배경 · 화면</button>
+        <button data-tab="target">타겟</button>
+        <button data-tab="crosshair">크로스헤어</button>
+        <button data-tab="controls">조작 · 사운드</button>
+      </div>
 
-      <div class="settings-grid">
-        <fieldset>
-          <legend>감도</legend>
-          <label>사용할 게임
-            <select id="set-game"></select>
-          </label>
-          <label><span id="set-sens-label">인게임 감도</span>
-            <input type="number" id="set-sens" step="0.001" min="0.001" />
-          </label>
-          <label>마우스 DPI
-            <input type="number" id="set-dpi" step="50" min="100" />
-          </label>
-          <div class="readout" id="sens-readout"></div>
-          <button class="btn small-btn" id="apply-fov"></button>
-          <p class="hint">감도는 게임마다 따로 저장됩니다. 정확한 변환을 위해 OS의 "포인터 정밀도 향상"은 꺼두세요.</p>
-        </fieldset>
+      <div class="tab-body" data-tab="sens">
+        <div class="settings-grid">
+          <div class="group">
+            <label>사용할 게임<select id="set-game"></select></label>
+            <label><span id="set-sens-label">인게임 감도</span><input type="number" id="set-sens" step="0.001" min="0.001" /></label>
+            <label>마우스 DPI<input type="number" id="set-dpi" step="50" min="100" /></label>
+            <div class="readout" id="sens-readout"></div>
+            <button class="btn small-btn" id="apply-fov"></button>
+            <p class="hint">감도는 게임마다 따로 저장됩니다. 정확한 변환을 위해 OS의 "포인터 정밀도 향상"은 꺼두세요.</p>
+          </div>
+          <div class="group span-2">
+            <div class="group-title">게임별 감도</div>
+            <p class="hint">저장된 감도와, 지금 감도와 <b>같은 회전량(cm/360)</b>이 되는 환산값. 행을 누르면 그 게임으로 전환합니다.</p>
+            <div class="table-scroll">
+              <table class="sens-table">
+                <thead><tr><th>게임</th><th>저장된 감도</th><th>cm/360</th><th>같은 감도</th><th></th></tr></thead>
+                <tbody id="sens-table"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
 
-        <fieldset>
-          <legend>화면</legend>
-          <label>수평 시야각 (FOV) <b id="set-fov-v"></b>
-            <input type="range" id="set-fov" min="70" max="120" step="1" />
-          </label>
-          <label>풍선 색상
-            <select id="set-color">
-              <option value="rainbow">무지개</option>
-              <option value="#ff4d6d">빨강</option>
-              <option value="#ffb703">노랑</option>
-              <option value="#4cc9f0">하늘</option>
-              <option value="#80ed99">초록</option>
-              <option value="#c77dff">보라</option>
-            </select>
-          </label>
-          <label>효과음 볼륨 <b id="set-vol-v"></b>
-            <input type="range" id="set-vol" min="0" max="100" step="1" />
-          </label>
-          <label class="check"><input type="checkbox" id="set-fps" /> FPS 표시</label>
-        </fieldset>
+      <div class="tab-body hidden" data-tab="visual">
+        <div class="group-title">배경 테마</div>
+        <div class="theme-grid" id="theme-grid"></div>
+        <div class="settings-grid" style="margin-top:18px">
+          <div class="group">
+            <label>수평 시야각 (FOV) <b id="set-fov-v"></b><input type="range" id="set-fov" min="70" max="120" step="1" /></label>
+            <label class="check"><input type="checkbox" id="set-fps" /> FPS 표시</label>
+          </div>
+        </div>
+      </div>
 
-        <fieldset>
-          <legend>크로스헤어</legend>
-          <div class="ch-wrap">
-            <div class="ch-preview"><canvas id="ch-preview"></canvas></div>
-            <div class="ch-controls">
-              <label>색상 <input type="color" id="ch-color" /></label>
-              <label>길이 <b id="ch-length-v"></b><input type="range" id="ch-length" min="0" max="20" step="1" /></label>
-              <label>두께 <b id="ch-thickness-v"></b><input type="range" id="ch-thickness" min="1" max="6" step="1" /></label>
-              <label>간격 <b id="ch-gap-v"></b><input type="range" id="ch-gap" min="0" max="14" step="1" /></label>
+      <div class="tab-body hidden" data-tab="target">
+        <div class="group-title">타겟 종류</div>
+        <div class="kind-grid" id="kind-grid"></div>
+        <div class="group-title" style="margin-top:18px">타겟 색상</div>
+        <div class="swatches" id="color-swatches"></div>
+      </div>
+
+      <div class="tab-body hidden" data-tab="crosshair">
+        <div class="ch-wrap">
+          <div class="ch-preview"><canvas id="ch-preview"></canvas></div>
+          <div class="ch-controls">
+            <label>색상 <input type="color" id="ch-color" /></label>
+            <label>길이 <b id="ch-length-v"></b><input type="range" id="ch-length" min="0" max="20" step="1" /></label>
+            <label>두께 <b id="ch-thickness-v"></b><input type="range" id="ch-thickness" min="1" max="6" step="1" /></label>
+            <label>간격 <b id="ch-gap-v"></b><input type="range" id="ch-gap" min="0" max="14" step="1" /></label>
+            <div class="checks">
               <label class="check"><input type="checkbox" id="ch-dot" /> 중앙 점</label>
               <label class="check"><input type="checkbox" id="ch-outline" /> 외곽선</label>
             </div>
           </div>
-        </fieldset>
-        <fieldset class="span-all">
-          <legend>게임별 감도</legend>
-          <p class="hint">각 게임의 저장된 감도와, 지금 쓰는 감도와 <b>같은 회전량(cm/360)</b>이 되는 환산값입니다. 행을 눌러 그 게임으로 전환하세요.</p>
-          <div class="table-scroll">
-            <table class="sens-table">
-              <thead><tr><th>게임</th><th>저장된 감도</th><th>cm/360</th><th>현재와 같은 감도</th><th></th></tr></thead>
-              <tbody id="sens-table"></tbody>
-            </table>
-          </div>
-        </fieldset>
+        </div>
+      </div>
 
-        <fieldset class="span-all">
-          <legend>조작</legend>
-          <div class="bind-row">
-            <div>
-              <div class="bind-title">발사</div>
-              <div class="hint">마우스 왼쪽 클릭은 항상 발사됩니다. 아래에 추가 발사 키(키보드 키 또는 마우스 버튼)를 지정할 수 있어요.</div>
-            </div>
-            <div class="bind-ctrls">
-              <span class="keycap">좌클릭</span>
-              <span class="muted">+</span>
-              <button class="btn keybind" id="fire-key-btn"></button>
-              <button class="btn ghost small-btn" id="fire-key-clear">지우기</button>
-            </div>
+      <div class="tab-body hidden" data-tab="controls">
+        <div class="bind-row">
+          <div>
+            <div class="group-title">발사</div>
+            <div class="hint">마우스 왼쪽 클릭은 항상 발사됩니다. 추가 발사 키(키보드 키 또는 마우스 버튼)를 하나 지정할 수 있어요.</div>
           </div>
-        </fieldset>
+          <div class="bind-ctrls">
+            <span class="keycap">좌클릭</span>
+            <span class="muted">+</span>
+            <button class="btn keybind" id="fire-key-btn"></button>
+            <button class="btn ghost small-btn" id="fire-key-clear">지우기</button>
+          </div>
+        </div>
+        <div class="settings-grid" style="margin-top:18px">
+          <div class="group">
+            <label>효과음 볼륨 <b id="set-vol-v"></b><input type="range" id="set-vol" min="0" max="100" step="1" /></label>
+          </div>
+        </div>
       </div>
 
       <div class="modal-foot">

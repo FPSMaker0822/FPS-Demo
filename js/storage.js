@@ -24,7 +24,9 @@ export const DEFAULT_SETTINGS = {
   crosshair: { color: '#2ef2b0', length: 6, thickness: 2, gap: 3, dot: false, outline: true },
   volume: 0.6,
   showFps: false,
-  balloonColor: 'rainbow',
+  targetKind: 'bot', // bot | orb | balloon
+  targetColor: 'auto', // auto | rainbow | #hex
+  theme: 'midnight',
   duration: 60,
   difficulty: 'normal',
 };
@@ -60,6 +62,7 @@ export function load() {
     settings,
     best: raw.best || {},
     history: raw.history || {},
+    log: Array.isArray(raw.log) ? raw.log : [], // 최근 플레이 기록 (통계용)
   };
 }
 
@@ -74,6 +77,7 @@ export function save(data) {
 export function resetRecords(data) {
   data.best = {};
   data.history = {};
+  data.log = [];
   save(data);
 }
 
@@ -118,6 +122,8 @@ export function record(data, r) {
   const hist = (data.history[key] ||= []);
   hist.push({ score: r.score, accuracy: r.accuracy, date: r.date });
   while (hist.length > 30) hist.shift();
+  data.log.push({ id: r.scenarioId, score: r.score, accuracy: r.accuracy, date: r.date });
+  while (data.log.length > 500) data.log.shift();
   save(data);
   return { isBest, prevBest: prev ? prev.score : null, history: hist };
 }

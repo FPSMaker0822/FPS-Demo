@@ -16,10 +16,11 @@ export const DIFFICULTY = {
 function pickDir(g, yawR, pitchR, minSep, exclude = []) {
   let p, tries = 0;
   const others = [...g.targets.map((b) => b.data.dir).filter(Boolean), ...exclude];
+  const sep = minSep * (g.kind === 'bot' ? 1.35 : 1);
   do {
     p = { yaw: rand(-yawR, yawR), pitch: rand(pitchR[0], pitchR[1]) };
     tries++;
-  } while (tries < 30 && others.some((o) => angDist(o, p) < minSep));
+  } while (tries < 30 && others.some((o) => angDist(o, p) < sep));
   return p;
 }
 
@@ -39,6 +40,7 @@ function wander(b, dt, maxV, box = BOX) {
   const k = Math.min(1, dt * 6);
   d.vx += (d.tvx - d.vx) * k;
   d.vy += (d.tvy - d.vy) * k;
+  if (box.y0 === box.y1) d.vy = d.tvy = 0;
   const p = b.position;
   p.x += d.vx * dt;
   p.y += d.vy * dt;
@@ -59,7 +61,8 @@ function trackDamage(g, b, dt, hpTime) {
   g.addScore(10);
   b.data.lit = 0.1;
   b.data.hp -= dt / hpTime;
-  b.inflate = 1 + (1 - b.data.hp) * 0.35;
+  if (b.kind === 'balloon') b.inflate = 1 + (1 - b.data.hp) * 0.35;
+  b.setHp(b.data.hp);
   if (b.data.hp <= 0) {
     g.stats.pops++;
     g.pop(b, 150);
@@ -69,7 +72,13 @@ function trackDamage(g, b, dt, hpTime) {
 }
 function trackGlow(b, dt) {
   b.data.lit = Math.max(0, (b.data.lit || 0) - dt);
-  b.material.emissiveIntensity = b.data.lit > 0 ? 0.55 : 0.1;
+  b.setLit(b.data.lit > 0);
+}
+/** 움직이는 타겟 영역: 봇은 바닥에 서서 좌우로, 나머지는 공중에서 */
+function moveBox(g, r) {
+  if (g.kind !== 'bot') return BOX;
+  const y = g.standY(r);
+  return { x: 7.5, y0: y, y1: y };
 }
 
 // ─────────────────────────────────────────────── 풍선 플릭
@@ -101,13 +110,16 @@ class Grid {
   constructor(g) {
     this.g = g;
     this.N = 5;
+    this.rows = g.kind === 'bot' ? 3 : 5;
     this.spacing = 1.8;
+    this.spacingY = g.kind === 'bot' ? 2.7 * g.diff.size : 1.8;
     this.lastKill = 0;
   }
   cellPos(i) {
     const c = i % this.N, r = Math.floor(i / this.N);
-    const half = (this.N - 1) / 2;
-    return new THREE.Vector3((c - half) * this.spacing, 5.4 + (r - half) * this.spacing, -14);
+    const half = (this.N - 1) / 2, halfR = (this.rows - 1) / 2;
+    const cy = this.g.kind === 'bot' ? 5.0 : 5.4;
+    return new THREE.Vector3((c - half) * this.spacing, cy + (r - halfR) * this.spacingY, -14);
   }
   start() {
     this.lastKill = this.g.time;
@@ -116,7 +128,7 @@ class Grid {
   spawn(exclude) {
     const used = new Set(this.g.targets.map((b) => b.data.cell));
     const free = [];
-    for (let i = 0; i < this.N * this.N; i++) if (!used.has(i) && i !== exclude) free.push(i);
+    for (let i = 0; i < this.N * this.rows; i++) if (!used.has(i) && i !== exclude) free.push(i);
     const cell = free[Math.floor(Math.random() * free.length)];
     const b = this.g.spawn({ position: this.cellPos(cell), radius: 0.62 * this.g.diff.size });
     b.data.cell = cell;
@@ -228,10 +240,12 @@ class Motion {
     for (let i = 0; i < 3; i++) this.spawn();
   }
   spawn() {
-    this.g.spawn({ position: new THREE.Vector3(rand(-6, 6), rand(2, 6), rand(-17, -14)), radius: 0.5 * this.g.diff.size });
+    const g = this.g, r = 0.5 * g.diff.size;
+    const y = g.kind === 'bot' ? g.standY(r) : rand(2, 6);
+    g.spawn({ position: new THREE.Vector3(rand(-6, 6), y, rand(-17, -14)), radius: r });
   }
   update(dt) {
-    for (const b of this.g.targets) wander(b, dt, 4.2 * this.g.diff.speed);
+    for (const b of this.g.targets) wander(b, dt, 4.2 * this.g.diff.speed, moveBox(this.g, b.radius));
   }
   onShoot(hit) {
     if (!hit) return;
@@ -254,13 +268,16 @@ class Tracking {
   }
   spawn() {
     const g = this.g;
-    this.b = g.spawn({ position: new THREE.Vector3(rand(-5, 5), rand(2.4, 5.5), -15), radius: 0.7 * g.diff.size, unique: true });
+    const r = 0.7 * g.diff.size;
+    const y = g.kind === 'bot' ? g.standY(r) : rand(2.4, 5.5);
+    this.b = g.spawn({ position: new THREE.Vector3(rand(-5, 5), y, -15), radius: r, unique: true });
     this.b.data.hp = 1;
+    this.b.setHp(1);
   }
   update(dt) {
     const b = this.b;
     if (!b || b.dead) return;
-    wander(b, dt, 5.5 * this.g.diff.speed);
+    wander(b, dt, 5.5 * this.g.diff.speed, moveBox(this.g, b.radius));
     trackGlow(b, dt);
   }
   onTick(hit, dt) {
@@ -279,8 +296,11 @@ class Strafe {
   }
   spawn() {
     const g = this.g;
-    this.b = g.spawn({ position: new THREE.Vector3(rand(-4, 4), 2.6, -13), radius: 0.62 * g.diff.size, unique: true });
+    const r = 0.62 * g.diff.size;
+    this.baseY = g.kind === 'bot' ? g.standY(r) : 2.6;
+    this.b = g.spawn({ position: new THREE.Vector3(rand(-4, 4), this.baseY, -13), radius: r, unique: true });
     this.b.data.hp = 1;
+    this.b.setHp(1);
     this.dir = Math.random() < 0.5 ? -1 : 1;
     this.v = 0;
     this.switchIn = rand(0.25, 0.9);
@@ -297,7 +317,7 @@ class Strafe {
       this.switchIn = rand(0.22, 0.95);
       const r = Math.random();
       if (r < 0.15) this.stopFor = rand(0.12, 0.3); // 잠깐 멈춤
-      else if (r < 0.25 && b.position.y <= 2.61) this.jumpV = 4.5; // 점프
+      else if (r < 0.25 && b.position.y <= this.baseY + 0.01) this.jumpV = 4.5; // 점프
       else this.dir *= -1; // 방향 전환 (AD 스트레이프)
     }
     const target = this.stopFor > 0 ? 0 : this.dir * maxV;
@@ -308,11 +328,11 @@ class Strafe {
       p.x = clamp(p.x, -7, 7);
       this.dir = -Math.sign(p.x);
     }
-    if (this.jumpV !== 0 || p.y > 2.6) {
+    if (this.jumpV !== 0 || p.y > this.baseY) {
       this.jumpV -= 12 * dt;
       p.y += this.jumpV * dt;
-      if (p.y <= 2.6) {
-        p.y = 2.6;
+      if (p.y <= this.baseY) {
+        p.y = this.baseY;
         this.jumpV = 0;
       }
     }
@@ -333,12 +353,15 @@ class Switching {
   }
   spawn() {
     const g = this.g;
-    const b = g.spawn({ position: new THREE.Vector3(rand(-7, 7), rand(2, 6.5), rand(-17, -12)), radius: 0.55 * g.diff.size, unique: true });
+    const r = 0.55 * g.diff.size;
+    const y = g.kind === 'bot' ? g.standY(r) : rand(2, 6.5);
+    const b = g.spawn({ position: new THREE.Vector3(rand(-7, 7), y, rand(-17, -12)), radius: r, unique: true });
     b.data.hp = 1;
+    b.setHp(1);
   }
   update(dt) {
     for (const b of this.g.targets) {
-      wander(b, dt, 4.5 * this.g.diff.speed);
+      wander(b, dt, 4.5 * this.g.diff.speed, moveBox(this.g, b.radius));
       trackGlow(b, dt);
     }
   }
@@ -466,7 +489,7 @@ class Rise {
     const g = this.g;
     const x0 = rand(-9, 9);
     const r = 0.6 * g.diff.size;
-    const b = g.spawn({ position: new THREE.Vector3(x0, r * 1.2 + 0.4, rand(-19, -12)), radius: r });
+    const b = g.spawn({ position: new THREE.Vector3(x0, 0, rand(-19, -12)), radius: r });
     b.data.x0 = x0;
     b.data.speed = (1.5 + Math.random() * 0.8 + g.time * 0.02) * g.diff.speed;
     b.data.wf = rand(0.8, 1.6);
@@ -481,7 +504,7 @@ class Rise {
     for (const b of [...g.targets]) {
       b.position.y += b.data.speed * dt;
       b.position.x = b.data.x0 + Math.sin(b.age * b.data.wf + b.phase) * 0.5;
-      if (b.position.y > 11) g.expire(b, 30);
+      if (b.position.y - b.bottomOffset() > 9) g.expire(b, 30);
     }
   }
   onShoot(hit) {
@@ -492,74 +515,82 @@ class Rise {
   }
 }
 
+// cat: click | track | switch | reaction
+export const CATEGORIES = {
+  click: { label: '클릭', color: '#ff5c7a' },
+  track: { label: '트래킹', color: '#3fb8ff' },
+  switch: { label: '타겟 전환', color: '#b57bff' },
+  reaction: { label: '반응', color: '#ffcf4d' },
+};
+
 export const SCENARIOS = {
   grid: {
-    name: '풍선 그리드', icon: '🟦', tag: '플릭 · 속도', metric: 'kill', mode: 'timed',
-    desc: '5×5 격자 위 3개의 풍선. 하나를 터트리면 다른 칸에 새로 생깁니다. 연속 명중 보너스.',
+    name: '그리드 클릭', cat: 'click', tag: '플릭 · 속도', metric: 'kill', mode: 'timed',
+    desc: '격자 위 3개의 타겟. 하나를 맞히면 다른 칸에 새로 생깁니다. 연속 명중 보너스.',
     create: (g) => new Grid(g),
   },
   six: {
-    name: '식스 풍선', icon: '🎲', tag: '정적 클릭 · 정밀', metric: 'kill', mode: 'timed',
-    desc: '작은 풍선 6개가 동시에 떠 있습니다. 정확하게 하나씩, 효율적인 순서로 터트리세요.',
+    name: '식스 타겟', cat: 'click', tag: '정적 클릭', metric: 'kill', mode: 'timed',
+    desc: '작은 타겟 6개가 동시에. 정확하게 하나씩, 효율적인 순서로 처리하세요.',
     create: (g) => new Six(g),
   },
   spider: {
-    name: '센터 리턴 플릭', icon: '🕸️', tag: '플릭', metric: 'kill', mode: 'timed',
-    desc: '중앙 풍선과 바깥 풍선이 번갈아 나옵니다. 크게 플릭하고 다시 중앙으로 돌아오는 연습.',
+    name: '센터 리턴 플릭', cat: 'click', tag: '플릭', metric: 'kill', mode: 'timed',
+    desc: '중앙 타겟과 바깥 타겟이 번갈아 나옵니다. 크게 플릭하고 다시 중앙으로.',
     create: (g) => new Spider(g),
   },
   micro: {
-    name: '마이크로 플릭', icon: '🎯', tag: '미세 조정', metric: 'kill', mode: 'timed',
-    desc: '작은 풍선이 직전 위치 근처에 생깁니다. 손목의 미세 조정을 연습하세요.',
+    name: '마이크로 플릭', cat: 'click', tag: '미세 조정', metric: 'kill', mode: 'timed',
+    desc: '작은 타겟이 직전 위치 근처에 생깁니다. 손목의 미세 조정 연습.',
     create: (g) => new Micro(g),
   },
   flick: {
-    name: '풍선 플릭', icon: '🎈', tag: '플릭', metric: 'kill', mode: 'timed',
-    desc: '넓은 범위에 하나씩 나타나는 풍선을 빠르게 플릭해서 터트리세요. 빠를수록 보너스.',
+    name: '와이드 플릭', cat: 'click', tag: '플릭', metric: 'kill', mode: 'timed',
+    desc: '넓은 범위에 하나씩 나타나는 타겟을 빠르게 플릭. 빠를수록 보너스.',
     create: (g) => new Flick(g),
   },
   motion: {
-    name: '무빙 풍선', icon: '💨', tag: '동적 클릭', metric: 'kill', mode: 'timed',
-    desc: '이리저리 움직이는 풍선 3개를 클릭으로 터트리세요. 움직임을 읽고 쏘는 연습.',
+    name: '무빙 클릭', cat: 'click', tag: '동적 클릭', metric: 'kill', mode: 'timed',
+    desc: '움직이는 타겟 3개를 클릭으로 처리하세요. 움직임을 읽고 쏘는 연습.',
     create: (g) => new Motion(g),
   },
   strafe: {
-    name: '스트레이프 트래킹', icon: '↔️', tag: '반응 트래킹', metric: 'track', mode: 'timed', hold: true,
-    desc: '좌우로 무빙(AD 스트레이프)하고 가끔 멈추거나 점프하는 풍선을 꾹 눌러 추적하세요.',
+    name: '스트레이프 트래킹', cat: 'track', tag: '반응 트래킹', metric: 'track', mode: 'timed', hold: true,
+    desc: '좌우 AD 무빙하고 가끔 멈추거나 점프하는 타겟을 꾹 눌러 추적하세요.',
     create: (g) => new Strafe(g),
   },
   tracking: {
-    name: '풍선 트래킹', icon: '🌀', tag: '부드러운 트래킹', metric: 'track', mode: 'timed', hold: true,
-    desc: '꾹 누른 채 부드럽게 움직이는 풍선을 따라가세요. 계속 맞히면 부풀어 오르다 터집니다.',
+    name: '스무스 트래킹', cat: 'track', tag: '정밀 트래킹', metric: 'track', mode: 'timed', hold: true,
+    desc: '꾹 누른 채 부드럽게 움직이는 타겟을 따라가세요. 체력이 다 닳으면 처치.',
     create: (g) => new Tracking(g),
   },
   switching: {
-    name: '타겟 스위칭', icon: '🔀', tag: '타겟 전환', metric: 'track', mode: 'timed', hold: true,
-    desc: '움직이는 풍선 3개. 하나를 추적해서 터트리면 바로 다음 풍선으로 전환하세요.',
+    name: '타겟 스위칭', cat: 'switch', tag: '추적 + 전환', metric: 'track', mode: 'timed', hold: true,
+    desc: '움직이는 타겟 3개. 하나를 추적해서 처치하면 바로 다음 타겟으로 전환.',
     create: (g) => new Switching(g),
   },
-  reaction: {
-    name: '반응속도', icon: '⚡', tag: '반응', metric: 'reaction', mode: 'rounds',
-    desc: '풍선이 나타나는 순간 바로 쏘세요. 10라운드. 미리 쏘면 감점!',
-    create: (g) => new Reaction(g),
+  rise: {
+    name: '라이징 타겟', cat: 'switch', tag: '빠른 전환', metric: 'rise', mode: 'timed',
+    desc: '바닥에서 떠오르는 타겟들을 천장에 닿기 전에 처리하세요. 점점 빨라집니다.',
+    create: (g) => new Rise(g),
   },
   precision: {
-    name: '정밀 사격', icon: '🔭', tag: '원거리 정밀', metric: 'kill', mode: 'timed',
-    desc: '멀리 있는 풍선이 점점 작아지다 사라집니다. 사라지기 전에 정확하게.',
+    name: '정밀 사격', cat: 'click', tag: '원거리 정밀', metric: 'kill', mode: 'timed',
+    desc: '멀리 있는 타겟이 점점 작아지다 사라집니다. 사라지기 전에 정확하게.',
     create: (g) => new Precision(g),
   },
-  rise: {
-    name: '풍선 상승', icon: '🎈', tag: '타겟 전환', metric: 'rise', mode: 'timed',
-    desc: '바닥에서 떠오르는 풍선들을 천장에 닿기 전에 터트리세요. 점점 빨라집니다.',
-    create: (g) => new Rise(g),
+  reaction: {
+    name: '반응속도', cat: 'reaction', tag: '반응', metric: 'reaction', mode: 'rounds',
+    desc: '타겟이 나타나는 순간 바로 쏘세요. 10라운드. 미리 쏘면 감점!',
+    create: (g) => new Reaction(g),
   },
 };
 
 // 인기 에임 트레이닝 루틴 구성을 참고한 루틴 (과제는 이 게임의 풍선 버전)
 export const ROUTINES = [
   {
-    id: 'popular5', name: '인기 워밍업 5종', icon: '🔥',
-    desc: '에임 트레이너에서 가장 많이 추천되는 조합(그리드 → 식스 → 센터 리턴 → 마이크로 → 스트레이프 트래킹)을 풍선 버전으로.',
+    id: 'popular5', name: '인기 워밍업 5종', icon: '🔥', featured: true,
+    desc: '에임 트레이너에서 가장 많이 추천되는 조합. 그리드 → 식스 → 센터 리턴 → 마이크로 → 스트레이프 트래킹.',
     steps: [['grid', 60], ['six', 60], ['spider', 60], ['micro', 60], ['strafe', 60]],
   },
   {

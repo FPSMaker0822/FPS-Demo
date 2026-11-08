@@ -48,6 +48,8 @@ export class Hud {
       fps: $('fps'),
       routine: $('hud-routine'),
       crosshair: $('crosshair'),
+      progress: $('hud-progress'),
+      streakLabel: $('hud-streak-label'),
     };
     this.cache = {};
     this.msgToken = 0;
@@ -72,14 +74,23 @@ export class Hud {
   update(game) {
     const s = game.stats;
     if (!s) return;
+    let frac;
     if (game.def.mode === 'rounds') {
       this.set('timeLabel', '라운드');
       this.set('time', game.scenario.progressText());
+      frac = 1 - game.scenario.round / game.scenario.rounds;
     } else {
       this.set('timeLabel', '남은 시간');
       const left = game.state === 'countdown' ? game.duration : Math.max(0, game.duration - game.time);
       this.set('time', left.toFixed(1));
+      frac = left / game.duration;
     }
+    const w = `${(frac * 100).toFixed(1)}%`;
+    if (this.cache.progress !== w) {
+      this.cache.progress = w;
+      this.el.progress.style.width = w;
+    }
+    this.set('streakLabel', game.def.hold ? '처치' : '연속');
     this.set('score', String(Math.round(s.score)));
     this.set('acc', s.shots ? `${Math.round((s.hits / s.shots) * 100)}%` : '—');
     this.set('streak', game.def.hold ? `${s.pops}개` : String(s.streak));
@@ -99,8 +110,9 @@ export class Hud {
     }
   }
 
-  hitmarker() {
+  hitmarker(head = false) {
     const h = this.el.hit;
+    h.classList.toggle('head', head);
     h.classList.remove('on');
     void h.offsetWidth;
     h.classList.add('on');
