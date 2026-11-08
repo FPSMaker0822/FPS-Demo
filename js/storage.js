@@ -29,6 +29,9 @@ export const DEFAULT_SETTINGS = {
   targetColor: 'auto', // auto | rainbow | #hex
   theme: 'midnight',
   graphics: 'high', // high: 블룸 + 그림자 | low: 가볍게
+  lang: null, // 'ko' | 'en' (null이면 브라우저 언어)
+  colorblind: 'off', // off | deut | prot | trit
+  onboarded: false,
   duration: 60,
   difficulty: 'normal',
 };
@@ -66,6 +69,9 @@ export function load() {
     best: raw.best || {},
     history: raw.history || {},
     log: Array.isArray(raw.log) ? raw.log : [], // 최근 플레이 기록 (통계용)
+    bench: raw.bench && typeof raw.bench === 'object' ? raw.bench : {}, // 벤치마크 최고 점수 { id: score }
+    benchHistory: Array.isArray(raw.benchHistory) ? raw.benchHistory : [], // 완료한 벤치마크 [{ date, scores }]
+    customs: Array.isArray(raw.customs) ? raw.customs : [], // 커스텀 시나리오 설정
   };
 }
 
@@ -81,6 +87,8 @@ export function resetRecords(data) {
   data.best = {};
   data.history = {};
   data.log = [];
+  data.bench = {};
+  data.benchHistory = [];
   save(data);
 }
 

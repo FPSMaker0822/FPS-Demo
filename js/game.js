@@ -1,10 +1,18 @@
 // 게임 루프, 입력(포인터 락), 상태 머신
 import * as THREE from 'three';
 import { Target, Effects, rayHit, PALETTE, TARGET_KINDS, bottomOffsetFor } from './targets.js';
-import { SCENARIOS, DIFFICULTY } from './scenarios.js';
+import { SCENARIOS, DIFFICULTY, setSeed } from './scenarios.js';
+import { t } from './i18n.js';
 import { EYE_HEIGHT } from './world.js';
 
 const DEG = Math.PI / 180;
+// 색약 모드용 타겟 색 (배경과 대비가 큰 색)
+const CB_COLORS = {
+  deut: { orb: '#ffc400', balloon: '#ffc400', bot: '#4fa3ff' },
+  prot: { orb: '#ffc400', balloon: '#ffc400', bot: '#4fa3ff' },
+  trit: { orb: '#ff4d6d', balloon: '#ff4d6d', bot: '#ff4d6d' },
+};
+const CB_PALETTE = ['#ffc400', '#4fa3ff', '#ffffff', '#ff8a3d'];
 const TICK = 1 / 20; // 트래킹 사격 판정 간격
 const MAX_PITCH = 89 * DEG;
 
@@ -34,7 +42,9 @@ export class Game {
     this.lockTime = 0;
     this._dir = new THREE.Vector3();
 
-    document.addEventListener('mousemove', (e) => this.onMouseMove(e));
+    // pointerrawupdate(지원 브라우저)는 mousemove보다 지연이 짧음
+    this.rawInput = 'onpointerrawupdate' in window;
+    document.addEventListener(this.rawInput ? 'pointerrawupdate' : 'mousemove', (e) => this.onMouseMove(e));
     this.held = new Set(); // 눌려 있는 발사 입력 (마우스 버튼/키)
     document.addEventListener('mousedown', (e) => {
       if (this.isFireMouse(e.button)) this.firePress('m' + e.button);
@@ -174,7 +184,9 @@ export class Game {
   }
 
   // ───────────────────────── 시작/종료
-  begin(scenarioId, { duration = 60, difficulty = 'normal', routineText = '' } = {}) {
+  begin(scenarioId, { duration = 60, difficulty = 'normal', routineText = '', seed = null } = {}) {
+    setSeed(seed);
+    this.seed = seed;
     this.clearTargets();
     this.clearDecor();
     this.hud.clearFloats();
@@ -190,7 +202,10 @@ export class Game {
     this.stats = {
       shots: 0, hits: 0, misses: 0, score: 0, streak: 0, maxStreak: 0,
       killTimes: [], reactionTimes: [], expired: 0, falseStarts: 0, pops: 0, headshots: 0,
+      flicks: [], misses: [], timeline: [],
     };
+    this.flickOrigin = { yaw: 0, pitch: 0 };
+    this.lastHitTime = 0;
     this.time = 0;
     this.yaw = 0;
     this.pitch = 0;
@@ -211,7 +226,7 @@ export class Game {
   }
 
   restart() {
-    this.begin(this.scenarioId, { duration: this.duration, difficulty: this.difficulty, routineText: this.routineText });
+    this.begin(this.scenarioId, { duration: this.duration, difficulty: this.difficulty, routineText: this.routineText, seed: this.seed });
     if (!this.locked) this.requestLock();
   }
 
@@ -262,6 +277,8 @@ export class Game {
       falseStarts: s.falseStarts,
       pops: s.pops,
       kind: this.kind,
+      seed: this.seed,
+      raw: { flicks: s.flicks, misses: s.misses, timeline: s.timeline },
       headshotRate: this.kind === 'bot' && !this.def.hold && s.hits ? s.headshots / s.hits : null,
       date: Date.now(),
     };
@@ -278,11 +295,24 @@ export class Game {
     );
   }
 
+  /** '자동' 색상: 색약 모드면 구분하기 쉬운 색으로 */
+  autoColor(kind) {
+    const cb = this.getSettings().colorblind;
+    if (cb && CB_COLORS[cb]) return CB_COLORS[cb][kind];
+    return TARGET_KINDS[kind].color;
+  }
+
+  nextColorPreview(kind = this.kind) {
+    const c = this.getSettings().targetColor || 'auto';
+    return c === 'auto' ? this.autoColor(kind) : c;
+  }
+
   nextColor(kind = this.kind) {
-    let c = this.getSettings().targetColor || 'auto';
-    if (c === 'auto') c = TARGET_KINDS[kind].color;
+    const c = this.nextColorPreview(kind);
     if (c !== 'rainbow') return c;
-    return PALETTE[this.colorIndex++ % PALETTE.length];
+    const cb = this.getSettings().colorblind;
+    const pal = cb && cb !== 'off' ? CB_PALETTE : PALETTE;
+    return pal[this.colorIndex++ % pal.length];
   }
 
   /** 바닥에 서 있는 높이(봇) */
@@ -321,7 +351,7 @@ export class Game {
       this.targets = this.targets.filter((t) => t !== b);
       b.startFade();
       this.fading.push(b);
-      this.feedKill(points, '처치', b.color);
+      this.feedKill(points, t('처치'), b.color);
       this.addScore(points, pos.setY(pos.y + b.topOffset() * 0.7), text);
       return;
     } else {
@@ -341,7 +371,7 @@ export class Game {
     this.stats.expired++;
     this.stats.streak = 0;
     this.addScore(-penalty);
-    this.hud.float(b.position, this.camera, penalty ? `놓침 −${penalty}` : '놓침', 'bad');
+    this.hud.float(b.position, this.camera, penalty ? `${t('놓침')} −${penalty}` : t('놓침'), 'bad');
     this.hud.edgeFlash();
     this.remove(b);
   }
@@ -368,10 +398,51 @@ export class Game {
     return h ? h.target : null;
   }
 
+  /** 타겟 방향 (카메라 yaw/pitch와 같은 규칙, 라디안) */
+  anglesTo(b) {
+    const d = this._v2 || (this._v2 = new THREE.Vector3());
+    d.subVectors(b.position, this.camera.position);
+    return { yaw: Math.atan2(-d.x, -d.z), pitch: Math.atan2(d.y, Math.hypot(d.x, d.z)) };
+  }
+
+  /** a→b 화면 기준 각도 차 (도, 오른쪽/위 +) */
+  screenDelta(a, b) {
+    let dy = b.yaw - a.yaw;
+    dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    return { x: -dy / DEG, y: (b.pitch - a.pitch) / DEG };
+  }
+
+  /** 분석용 기록: 명중이면 플릭 거리/시간, 빗나가면 지나침/모자람 */
+  recordShot(hit) {
+    const s = this.stats;
+    const aim = { yaw: this.yaw, pitch: this.pitch };
+    if (hit) {
+      const d = this.screenDelta(this.flickOrigin, this.anglesTo(hit));
+      if (s.flicks.length < 600) s.flicks.push({ dx: d.x, dy: d.y, t: this.time - Math.max(this.lastHitTime, hit.spawnAt) });
+      this.flickOrigin = aim;
+      this.lastHitTime = this.time;
+      return;
+    }
+    let best = null;
+    for (const b of this.targets) {
+      const a = this.anglesTo(b);
+      const off = this.screenDelta(a, aim);
+      const dist = Math.hypot(off.x, off.y);
+      if (!best || dist < best.dist) best = { b, a, off, dist };
+    }
+    if (!best || best.dist > 15) return;
+    const v = this.screenDelta(this.flickOrigin, best.a);
+    const len = Math.hypot(v.x, v.y);
+    if (len < 1) return;
+    const ux = v.x / len, uy = v.y / len;
+    if (s.misses.length < 600) s.misses.push({ along: best.off.x * ux + best.off.y * uy, perp: -best.off.x * uy + best.off.y * ux });
+  }
+
   shoot() {
     if (this.state !== 'playing' || this.def.hold) return;
     const hit = this.raycast();
     const head = this.lastHead;
+    if (this.def.metric !== 'reaction') this.recordShot(hit);
     const r = this.scenario.onShoot?.(hit);
     if (r === 'skip') return;
     const s = this.stats;
@@ -384,7 +455,7 @@ export class Game {
       this.hud.hitmarker(head);
     } else {
       s.misses++;
-      if (s.streak >= 5) this.hud.message('COMBO BREAK', 'bad', 0.5);
+      if (s.streak >= 5) this.hud.message(t('콤보 끊김'), 'bad', 0.5);
       s.streak = 0;
       this.sfx.miss();
     }
@@ -394,8 +465,12 @@ export class Game {
     const s = this.stats;
     const hit = this.raycast();
     s.shots++;
+    const bi = Math.floor(this.time / 5);
+    const bucket = (s.timeline[bi] ||= { hit: 0, total: 0 });
+    bucket.total++;
     if (hit) {
       s.hits++;
+      bucket.hit++;
       if (s.shots % 2 === 0) this.sfx.tick();
     }
     this.scenario.onTick?.(hit, TICK);

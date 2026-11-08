@@ -3,9 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>POPSHOT · 에임 트레이너</title>
-  <meta name="description" content="구체 · 풍선 · 움직이는 사람 표적으로 플릭, 트래킹, 반응속도를 연습하는 웹 FPS 에임 트레이너" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='11' fill='none' stroke='%232ef2b0' stroke-width='3'/><circle cx='16' cy='16' r='3' fill='%232ef2b0'/></svg>" />
+  <title>POPSHOT · Aim Trainer</title>
+  <meta name="description" content="Browser FPS aim trainer: flicking, tracking, target switching, reaction, benchmarks and custom scenarios." />
+  <meta name="theme-color" content="#07090f" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
@@ -26,7 +29,7 @@
       </div>
       <div class="hud-center">
         <div class="hud-time-row">
-          <span class="hud-label" id="hud-time-label">남은 시간</span>
+          <span class="hud-label" id="hud-time-label"></span>
           <span class="hud-time" id="hud-time">60.0</span>
         </div>
         <div class="hud-progress"><i id="hud-progress"></i></div>
@@ -37,9 +40,9 @@
           <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="16" class="track" /><circle cx="20" cy="20" r="16" class="bar" id="hud-acc-ring" /></svg>
           <b id="hud-acc">—</b>
         </div>
-        <div class="hud-stat"><span class="hud-label">정확도</span><span class="hud-sub" id="hud-hits">0 / 0</span></div>
+        <div class="hud-stat"><span class="hud-label" data-i18n>정확도</span><span class="hud-sub" id="hud-hits">0 / 0</span></div>
         <div class="hud-divider"></div>
-        <div class="hud-stat"><span class="hud-label" id="hud-streak-label">연속</span><b id="hud-streak">0</b></div>
+        <div class="hud-stat"><span class="hud-label" id="hud-streak-label"></span><b id="hud-streak">0</b></div>
       </div>
     </div>
     <canvas id="crosshair"></canvas>
@@ -62,13 +65,15 @@
         <div class="brand-name">POP<span>SHOT</span></div>
       </div>
       <nav class="nav">
-        <button class="nav-item on" data-page="play"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="2" /></svg><span>플레이</span></button>
-        <button class="nav-item" data-page="routines"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7" /><path d="M17 15l4 3-4 3z" class="fill" /></svg><span>루틴</span></button>
-        <button class="nav-item" data-page="stats"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg><span>기록</span></button>
-        <button class="nav-item" id="nav-settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" /></svg><span>설정</span></button>
+        <button class="nav-item on" data-page="play"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="2" /></svg><span data-i18n>플레이</span></button>
+        <button class="nav-item" data-page="bench"><svg viewBox="0 0 24 24"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z" /></svg><span data-i18n>벤치마크</span></button>
+        <button class="nav-item" data-page="routines"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7" /><path d="M17 15l4 3-4 3z" class="fill" /></svg><span data-i18n>루틴</span></button>
+        <button class="nav-item" data-page="create"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg><span data-i18n>만들기</span></button>
+        <button class="nav-item" data-page="stats"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg><span data-i18n>기록</span></button>
+        <button class="nav-item" id="nav-settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" /></svg><span data-i18n>설정</span></button>
       </nav>
       <div class="side-card" id="side-sens">
-        <div class="side-label">감도</div>
+        <div class="side-label" data-i18n>감도</div>
         <div class="side-value" id="side-sens-value"></div>
         <div class="side-sub" id="side-sens-sub"></div>
       </div>
@@ -80,29 +85,52 @@
         <header class="page-head">
           <div>
             <p class="eyebrow">AIM TRAINER</p>
-            <h1>오늘도 한 판, <span class="grad">에임 워밍업</span></h1>
+            <h1><span data-i18n>오늘도 한 판,</span> <span class="grad" data-i18n>에임 워밍업</span></h1>
           </div>
           <div class="controls">
-            <div class="ctrl"><span>타겟</span><div class="seg" id="seg-kind"><button data-v="orb">구체</button><button data-v="balloon">풍선</button></div></div>
-            <div class="ctrl"><span>시간</span><div class="seg" id="seg-duration"><button data-v="30">30s</button><button data-v="60">60s</button><button data-v="90">90s</button></div></div>
-            <div class="ctrl"><span>난이도</span><div class="seg" id="seg-diff"><button data-v="easy">쉬움</button><button data-v="normal">보통</button><button data-v="hard">어려움</button></div></div>
+            <div class="ctrl"><span data-i18n>타겟</span><div class="seg" id="seg-kind"><button data-v="orb" data-i18n>구체</button><button data-v="balloon" data-i18n>풍선</button></div></div>
+            <div class="ctrl"><span data-i18n>시간</span><div class="seg" id="seg-duration"><button data-v="30">30s</button><button data-v="60">60s</button><button data-v="90">90s</button></div></div>
+            <div class="ctrl"><span data-i18n>난이도</span><div class="seg" id="seg-diff"><button data-v="easy" data-i18n>쉬움</button><button data-v="normal" data-i18n>보통</button><button data-v="hard" data-i18n>어려움</button></div></div>
           </div>
         </header>
 
         <div class="bento">
           <div class="tile hero" id="hero"></div>
-          <div class="tile stat-tile"><div class="tile-label">총 플레이</div><div class="tile-value" id="st-plays">0</div><div class="tile-sub" id="st-plays-sub"></div></div>
-          <div class="tile stat-tile"><div class="tile-label">최근 10판 정확도</div><div class="tile-value" id="st-acc">—</div><div class="tile-bar"><i id="st-acc-bar"></i></div></div>
-          <div class="tile stat-tile"><div class="tile-label">연속 플레이</div><div class="tile-value" id="st-streak">0일</div><div class="tile-sub" id="st-streak-sub">오늘 플레이해서 기록을 이어가세요</div></div>
+          <div class="tile stat-tile" id="tile-rank"></div>
+          <div class="tile stat-tile"><div class="tile-label" data-i18n>최근 10판 정확도</div><div class="tile-value" id="st-acc">—</div><div class="tile-bar"><i id="st-acc-bar"></i></div><div class="tile-sub" id="st-plays-sub"></div></div>
+          <div class="tile stat-tile"><div class="tile-label" data-i18n>연속 플레이</div><div class="tile-value" id="st-streak">0</div><div class="tile-sub" id="st-streak-sub"></div></div>
         </div>
 
         <div class="section-head">
-          <h2>시나리오</h2>
+          <h2 data-i18n>시나리오</h2>
           <div class="chips" id="cat-filter"></div>
         </div>
         <div id="scenario-grid" class="cards"></div>
         <p class="footnote" id="footnote"></p>
-        <p class="footnote warn hidden" id="mobile-warn">이 게임은 마우스가 있는 PC 브라우저(Chrome / Edge / Firefox)에서 플레이하세요.</p>
+        <p class="footnote warn hidden" id="mobile-warn" data-i18n>이 게임은 마우스가 있는 PC 브라우저(Chrome / Edge / Firefox)에서 플레이하세요.</p>
+      </div>
+
+      <!-- 벤치마크 -->
+      <div class="page hidden" id="page-bench">
+        <header class="page-head">
+          <div>
+            <p class="eyebrow">BENCHMARK</p>
+            <h1><span data-i18n>실력 측정,</span> <span class="grad" data-i18n>랭크 확인</span></h1>
+            <p class="lede" data-i18n>8개 시나리오를 같은 조건(보통 · 45초 · 고정 배치)으로 플레이해 분야별 티어와 종합 랭크를 매깁니다.</p>
+          </div>
+          <button class="btn primary" id="bench-start" data-i18n>벤치마크 시작</button>
+        </header>
+        <div class="bento bench-bento">
+          <div class="tile rank-hero" id="bench-overall"></div>
+          <div class="tile" id="bench-weak"></div>
+        </div>
+        <div class="tile table-tile">
+          <table class="stats-table">
+            <thead><tr><th data-i18n>시나리오</th><th data-i18n>분야</th><th data-i18n>최고 점수</th><th data-i18n>티어</th><th data-i18n>다음 티어까지</th><th></th></tr></thead>
+            <tbody id="bench-body"></tbody>
+          </table>
+        </div>
+        <p class="footnote" data-i18n>티어 기준은 점수 공식으로 추정한 임시 기준입니다. 실제 플레이 데이터가 쌓이면 보정될 수 있습니다.</p>
       </div>
 
       <!-- 루틴 -->
@@ -110,11 +138,39 @@
         <header class="page-head">
           <div>
             <p class="eyebrow">ROUTINES</p>
-            <h1>루틴으로 <span class="grad">꾸준하게</span></h1>
-            <p class="lede">여러 시나리오를 연속으로 진행하고, 마지막에 합계와 단계별 결과를 보여줍니다.</p>
+            <h1><span data-i18n>루틴으로</span> <span class="grad" data-i18n>꾸준하게</span></h1>
+            <p class="lede" data-i18n>여러 시나리오를 연속으로 진행하고, 마지막에 합계와 단계별 결과를 보여줍니다.</p>
           </div>
         </header>
         <div id="routine-grid" class="cards routines"></div>
+      </div>
+
+      <!-- 만들기 -->
+      <div class="page hidden" id="page-create">
+        <header class="page-head">
+          <div>
+            <p class="eyebrow">CREATE</p>
+            <h1><span data-i18n>나만의</span> <span class="grad" data-i18n>시나리오</span></h1>
+            <p class="lede" data-i18n>타겟 수, 크기, 거리, 범위, 속도를 조절해 시나리오를 만들고 링크로 공유하세요.</p>
+          </div>
+          <button class="btn primary" id="create-new" data-i18n>+ 새 시나리오</button>
+        </header>
+        <div class="editor tile hidden" id="editor">
+          <div class="editor-grid">
+            <label><span data-i18n>이름</span><input type="text" id="ed-name" maxlength="40" /></label>
+            <label><span data-i18n>종류</span>
+              <select id="ed-type"><option value="click" data-i18n>클릭 (맞히면 처치)</option><option value="track" data-i18n>트래킹 (누르고 추적)</option></select>
+            </label>
+            <div id="ed-fields" class="editor-fields"></div>
+          </div>
+          <div class="btns">
+            <button class="btn primary" id="ed-save" data-i18n>저장</button>
+            <button class="btn" id="ed-test" data-i18n>저장하고 플레이</button>
+            <button class="btn ghost" id="ed-cancel" data-i18n>취소</button>
+          </div>
+        </div>
+        <div id="custom-grid" class="cards"></div>
+        <p class="footnote hidden" id="custom-empty" data-i18n>아직 만든 시나리오가 없어요. "+ 새 시나리오"로 시작해 보세요.</p>
       </div>
 
       <!-- 기록 -->
@@ -122,13 +178,17 @@
         <header class="page-head">
           <div>
             <p class="eyebrow">STATS</p>
-            <h1>나의 <span class="grad">기록</span></h1>
+            <h1><span data-i18n>나의</span> <span class="grad" data-i18n>기록</span></h1>
             <p class="lede" id="stats-lede"></p>
           </div>
         </header>
+        <div class="tile chart-tile">
+          <div class="tile-label" data-i18n>주간 플레이 · 평균 정확도</div>
+          <canvas id="weekly-chart"></canvas>
+        </div>
         <div class="tile table-tile">
           <table class="stats-table">
-            <thead><tr><th>시나리오</th><th>최고 점수</th><th>최근 점수</th><th>최근 정확도</th><th>플레이</th><th>추이</th></tr></thead>
+            <thead><tr><th data-i18n>시나리오</th><th data-i18n>최고 점수</th><th data-i18n>최근 점수</th><th data-i18n>최근 정확도</th><th data-i18n>플레이</th><th data-i18n>추이</th></tr></thead>
             <tbody id="stats-body"></tbody>
           </table>
         </div>
@@ -140,13 +200,13 @@
   <section id="pause" class="screen overlay hidden">
     <div class="panel small">
       <p class="eyebrow">PAUSED</p>
-      <h2>일시정지</h2>
-      <p class="muted" id="pause-hint">화면을 클릭하거나 계속하기를 누르세요</p>
+      <h2 data-i18n>일시정지</h2>
+      <p class="muted" id="pause-hint"></p>
       <div class="btns col">
-        <button class="btn primary" id="pause-resume">계속하기</button>
-        <button class="btn" id="pause-restart">다시 시작</button>
-        <button class="btn" id="pause-settings">설정</button>
-        <button class="btn ghost" id="pause-menu">메뉴로</button>
+        <button class="btn primary" id="pause-resume" data-i18n>계속하기</button>
+        <button class="btn" id="pause-restart" data-i18n>다시 시작</button>
+        <button class="btn" id="pause-settings" data-i18n>설정</button>
+        <button class="btn ghost" id="pause-menu" data-i18n>메뉴로</button>
       </div>
     </div>
   </section>
@@ -159,55 +219,126 @@
           <p class="eyebrow" id="res-meta"></p>
           <h2 id="res-name"></h2>
         </div>
-        <span class="badge hidden" id="res-badge">NEW BEST</span>
+        <div class="res-badges">
+          <span class="tier-badge hidden" id="res-tier"></span>
+          <span class="badge hidden" id="res-badge">NEW BEST</span>
+        </div>
       </div>
       <div class="res-score"><span id="res-score">0</span><small id="res-prev"></small></div>
       <div class="res-stats" id="res-stats"></div>
+      <div id="res-analysis" class="hidden"></div>
       <div class="spark-wrap">
-        <div class="small-label">최근 기록</div>
+        <div class="small-label" data-i18n>최근 기록</div>
         <canvas id="res-spark"></canvas>
       </div>
       <div id="res-routine" class="hidden"></div>
       <div class="btns">
-        <button class="btn primary" id="res-next">다음 단계 ▶</button>
-        <button class="btn primary" id="res-retry">다시 하기</button>
-        <button class="btn ghost" id="res-menu">메뉴</button>
+        <button class="btn primary" id="res-next"></button>
+        <button class="btn primary" id="res-retry"></button>
+        <button class="btn ghost" id="res-menu" data-i18n>메뉴</button>
       </div>
-      <p class="muted kbd-hint"><kbd>Enter</kbd> <span id="res-enter-label">다시 하기</span></p>
+      <p class="muted kbd-hint"><kbd>Enter</kbd> <span id="res-enter-label"></span></p>
     </div>
   </section>
+
+  <!-- 첫 실행 안내 -->
+  <div id="onboard" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="panel onboard-panel">
+      <div class="steps-dots" id="ob-dots"></div>
+      <div class="ob-step" data-step="0">
+        <p class="eyebrow">WELCOME</p>
+        <h2>POPSHOT</h2>
+        <p class="muted" data-i18n>브라우저에서 바로 하는 FPS 에임 트레이너. 1분이면 준비 끝!</p>
+        <div class="group-title" data-i18n>언어</div>
+        <div class="seg big" id="ob-lang"><button data-v="ko">한국어</button><button data-v="en">English</button></div>
+      </div>
+      <div class="ob-step hidden" data-step="1">
+        <p class="eyebrow">SENSITIVITY</p>
+        <h2 data-i18n>평소 감도를 알려주세요</h2>
+        <p class="muted" data-i18n>주로 하는 게임의 감도를 넣으면 똑같은 회전량으로 맞춰집니다.</p>
+        <div class="ob-grid">
+          <label><span data-i18n>게임</span><select id="ob-game"></select></label>
+          <label><span data-i18n>인게임 감도</span><input type="number" id="ob-sens" step="0.001" min="0.001" /></label>
+          <label><span data-i18n>마우스 DPI</span><input type="number" id="ob-dpi" step="50" min="100" /></label>
+        </div>
+        <div class="readout" id="ob-readout"></div>
+        <button class="btn ghost small-btn" id="ob-measure" data-i18n>DPI를 모르겠어요 → 측정하기</button>
+      </div>
+      <div class="ob-step hidden" data-step="2">
+        <p class="eyebrow">READY</p>
+        <h2 data-i18n>준비 완료!</h2>
+        <p class="muted" data-i18n>벤치마크로 지금 실력을 측정하면 분야별 티어와 약점에 맞는 루틴을 추천해 드려요.</p>
+        <div class="ob-choices">
+          <button class="option-card" id="ob-bench"><div class="option-name" data-i18n>벤치마크로 실력 측정</div><div class="option-desc" data-i18n>약 6분 · 8개 시나리오</div></button>
+          <button class="option-card" id="ob-skip"><div class="option-name" data-i18n>바로 둘러보기</div><div class="option-desc" data-i18n>나중에 언제든 할 수 있어요</div></button>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost" id="ob-back" data-i18n>이전</button>
+        <button class="btn primary" id="ob-next" data-i18n>다음</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 입력 진단 / DPI 측정 -->
+  <div id="diag" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="panel">
+      <div class="modal-head">
+        <h2 data-i18n>입력 진단 · DPI 측정</h2>
+        <button class="btn ghost icon" id="diag-close" aria-label="close">✕</button>
+      </div>
+      <p class="muted" data-i18n>아래 영역을 클릭하면 마우스가 잠기고 측정이 시작됩니다. ESC로 해제.</p>
+      <div class="diag-area" id="diag-area">
+        <div class="diag-grid">
+          <div class="stat"><div class="stat-k" data-i18n>마우스 이벤트</div><div class="stat-v" id="dg-rate">—</div></div>
+          <div class="stat"><div class="stat-k" data-i18n>화면 주사율</div><div class="stat-v" id="dg-fps">—</div></div>
+          <div class="stat"><div class="stat-k" data-i18n>가로 이동량</div><div class="stat-v" id="dg-counts">0</div></div>
+          <div class="stat"><div class="stat-k" data-i18n>입력 방식</div><div class="stat-v small" id="dg-raw">—</div></div>
+        </div>
+        <div class="diag-measure">
+          <label><span data-i18n>움직인 실제 거리 (cm)</span><input type="number" id="dg-cm" value="10" min="1" step="0.5" /></label>
+          <div class="readout" id="dg-dpi"></div>
+          <button class="btn small-btn" id="dg-reset" data-i18n>이동량 초기화</button>
+          <button class="btn primary small-btn" id="dg-apply" data-i18n>측정한 DPI 적용</button>
+        </div>
+        <p class="hint" data-i18n>DPI 측정: 자를 대고 이동량을 초기화한 뒤, 마우스를 정확히 위 거리만큼 오른쪽으로 천천히 움직이세요.</p>
+      </div>
+    </div>
+  </div>
 
   <!-- 설정 -->
   <div id="settings" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="panel wide settings-panel">
       <div class="modal-head">
-        <h2 id="settings-title">설정</h2>
-        <button class="btn ghost icon" id="settings-close" aria-label="닫기">✕</button>
+        <h2 id="settings-title" data-i18n>설정</h2>
+        <button class="btn ghost icon" id="settings-close" aria-label="close">✕</button>
       </div>
       <div class="tabs" id="settings-tabs">
-        <button data-tab="sens" class="on">감도</button>
-        <button data-tab="visual">배경 · 화면</button>
-        <button data-tab="target">타겟</button>
-        <button data-tab="crosshair">크로스헤어</button>
-        <button data-tab="controls">조작 · 사운드</button>
+        <button data-tab="sens" class="on" data-i18n>감도</button>
+        <button data-tab="visual" data-i18n>배경 · 화면</button>
+        <button data-tab="target" data-i18n>타겟</button>
+        <button data-tab="crosshair" data-i18n>크로스헤어</button>
+        <button data-tab="controls" data-i18n>조작 · 사운드</button>
+        <button data-tab="general" data-i18n>일반 · 정보</button>
       </div>
 
       <div class="tab-body" data-tab="sens">
         <div class="settings-grid">
           <div class="group">
-            <label>사용할 게임<select id="set-game"></select></label>
-            <label><span id="set-sens-label">인게임 감도</span><input type="number" id="set-sens" step="0.001" min="0.001" /></label>
-            <label>마우스 DPI<input type="number" id="set-dpi" step="50" min="100" /></label>
+            <label><span data-i18n>사용할 게임</span><select id="set-game"></select></label>
+            <label><span id="set-sens-label"></span><input type="number" id="set-sens" step="0.001" min="0.001" /></label>
+            <label><span data-i18n>마우스 DPI</span><input type="number" id="set-dpi" step="50" min="100" /></label>
             <div class="readout" id="sens-readout"></div>
             <button class="btn small-btn" id="apply-fov"></button>
-            <p class="hint">감도는 게임마다 따로 저장됩니다. 정확한 변환을 위해 OS의 "포인터 정밀도 향상"은 꺼두세요.</p>
+            <button class="btn ghost small-btn" id="open-diag" data-i18n>입력 진단 · DPI 측정</button>
+            <p class="hint" data-i18n>감도는 게임마다 따로 저장됩니다. 정확한 변환을 위해 OS의 "포인터 정밀도 향상"은 꺼두세요.</p>
           </div>
           <div class="group span-2">
-            <div class="group-title">게임별 감도</div>
-            <p class="hint">저장된 감도와, 지금 감도와 <b>같은 회전량(cm/360)</b>이 되는 환산값. 행을 누르면 그 게임으로 전환합니다.</p>
+            <div class="group-title" data-i18n>게임별 감도</div>
+            <p class="hint" data-i18n>저장된 감도와, 지금 감도와 같은 회전량(cm/360)이 되는 환산값. 행을 누르면 그 게임으로 전환합니다.</p>
             <div class="table-scroll">
               <table class="sens-table">
-                <thead><tr><th>게임</th><th>저장된 감도</th><th>cm/360</th><th>같은 감도</th><th></th></tr></thead>
+                <thead><tr><th data-i18n>게임</th><th data-i18n>저장된 감도</th><th>cm/360</th><th data-i18n>같은 감도</th><th></th></tr></thead>
                 <tbody id="sens-table"></tbody>
               </table>
             </div>
@@ -216,29 +347,31 @@
       </div>
 
       <div class="tab-body hidden" data-tab="visual">
-        <div class="group-title">배경 테마</div>
+        <div class="group-title" data-i18n>배경 테마</div>
         <div class="theme-grid" id="theme-grid"></div>
         <div class="settings-grid" style="margin-top:18px">
           <div class="group">
-            <label>수평 시야각 (FOV) <b id="set-fov-v"></b><input type="range" id="set-fov" min="70" max="120" step="1" /></label>
-            <label>그래픽 품질
+            <label><span data-i18n>수평 시야각 (FOV)</span> <b id="set-fov-v"></b><input type="range" id="set-fov" min="70" max="120" step="1" /></label>
+            <label class="check"><input type="checkbox" id="set-fps" /> <span data-i18n>FPS 표시</span></label>
+          </div>
+          <div class="group">
+            <label><span data-i18n>그래픽 품질</span>
               <select id="set-gfx">
-                <option value="high">높음 · 네온 글로우(블룸) + 그림자</option>
-                <option value="low">낮음 · 가볍게 (저사양 PC)</option>
+                <option value="high" data-i18n>높음 · 네온 글로우(블룸) + 그림자</option>
+                <option value="low" data-i18n>낮음 · 가볍게 (저사양 PC)</option>
               </select>
             </label>
-            <label class="check"><input type="checkbox" id="set-fps" /> FPS 표시</label>
           </div>
         </div>
       </div>
 
       <div class="tab-body hidden" data-tab="target">
-        <div class="group-title">클릭 모드 타겟</div>
+        <div class="group-title" data-i18n>클릭 모드 타겟</div>
         <div class="kind-grid" id="kind-grid"></div>
-        <div class="group-title" style="margin-top:18px">트래킹 모드 타겟</div>
+        <div class="group-title" style="margin-top:18px" data-i18n>트래킹 모드 타겟</div>
         <div class="kind-grid" id="track-grid"></div>
-        <p class="hint" style="margin-top:8px">사람 표적은 스트레이프 · 스무스 트래킹 · 타겟 스위칭에서만 나오며, 처치하면 터지지 않고 조용히 사라집니다.</p>
-        <div class="group-title" style="margin-top:18px">타겟 색상</div>
+        <p class="hint" style="margin-top:8px" data-i18n>사람 표적은 트래킹 모드에서만 나오며, 처치하면 터지지 않고 조용히 사라집니다.</p>
+        <div class="group-title" style="margin-top:18px" data-i18n>타겟 색상</div>
         <div class="swatches" id="color-swatches"></div>
       </div>
 
@@ -246,13 +379,13 @@
         <div class="ch-wrap">
           <div class="ch-preview"><canvas id="ch-preview"></canvas></div>
           <div class="ch-controls">
-            <label>색상 <input type="color" id="ch-color" /></label>
-            <label>길이 <b id="ch-length-v"></b><input type="range" id="ch-length" min="0" max="20" step="1" /></label>
-            <label>두께 <b id="ch-thickness-v"></b><input type="range" id="ch-thickness" min="1" max="6" step="1" /></label>
-            <label>간격 <b id="ch-gap-v"></b><input type="range" id="ch-gap" min="0" max="14" step="1" /></label>
+            <label><span data-i18n>색상</span> <input type="color" id="ch-color" /></label>
+            <label><span data-i18n>길이</span> <b id="ch-length-v"></b><input type="range" id="ch-length" min="0" max="20" step="1" /></label>
+            <label><span data-i18n>두께</span> <b id="ch-thickness-v"></b><input type="range" id="ch-thickness" min="1" max="6" step="1" /></label>
+            <label><span data-i18n>간격</span> <b id="ch-gap-v"></b><input type="range" id="ch-gap" min="0" max="14" step="1" /></label>
             <div class="checks">
-              <label class="check"><input type="checkbox" id="ch-dot" /> 중앙 점</label>
-              <label class="check"><input type="checkbox" id="ch-outline" /> 외곽선</label>
+              <label class="check"><input type="checkbox" id="ch-dot" /> <span data-i18n>중앙 점</span></label>
+              <label class="check"><input type="checkbox" id="ch-outline" /> <span data-i18n>외곽선</span></label>
             </div>
           </div>
         </div>
@@ -261,29 +394,74 @@
       <div class="tab-body hidden" data-tab="controls">
         <div class="bind-row">
           <div>
-            <div class="group-title">발사</div>
-            <div class="hint">마우스 왼쪽 클릭은 항상 발사됩니다. 추가 발사 키(키보드 키 또는 마우스 버튼)를 하나 지정할 수 있어요.</div>
+            <div class="group-title" data-i18n>발사</div>
+            <div class="hint" data-i18n>마우스 왼쪽 클릭은 항상 발사됩니다. 추가 발사 키(키보드 키 또는 마우스 버튼)를 하나 지정할 수 있어요.</div>
           </div>
           <div class="bind-ctrls">
-            <span class="keycap">좌클릭</span>
+            <span class="keycap" data-i18n>좌클릭</span>
             <span class="muted">+</span>
             <button class="btn keybind" id="fire-key-btn"></button>
-            <button class="btn ghost small-btn" id="fire-key-clear">지우기</button>
+            <button class="btn ghost small-btn" id="fire-key-clear" data-i18n>지우기</button>
           </div>
         </div>
         <div class="settings-grid" style="margin-top:18px">
           <div class="group">
-            <label>효과음 볼륨 <b id="set-vol-v"></b><input type="range" id="set-vol" min="0" max="100" step="1" /></label>
+            <label><span data-i18n>효과음 볼륨</span> <b id="set-vol-v"></b><input type="range" id="set-vol" min="0" max="100" step="1" /></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-body hidden" data-tab="general">
+        <div class="settings-grid">
+          <div class="group">
+            <label><span data-i18n>언어</span>
+              <select id="set-lang"><option value="ko">한국어</option><option value="en">English</option></select>
+            </label>
+            <label><span data-i18n>색약 모드</span>
+              <select id="set-cb">
+                <option value="off" data-i18n>끄기</option>
+                <option value="deut" data-i18n>적록색약 (녹색약)</option>
+                <option value="prot" data-i18n>적록색약 (적색약)</option>
+                <option value="trit" data-i18n>청황색약</option>
+              </select>
+            </label>
+            <button class="btn ghost small-btn" id="redo-onboard" data-i18n>첫 실행 안내 다시 보기</button>
+          </div>
+          <div class="group span-2">
+            <div class="group-title" data-i18n>정보</div>
+            <p class="hint" data-i18n>모든 기록과 설정은 이 브라우저에만 저장되며 서버로 전송되지 않습니다.</p>
+            <p class="hint" data-i18n>게임 이름(Valorant, Counter-Strike 2 등)은 감도 변환을 설명하기 위해서만 사용되며, 각 상표권자와 무관합니다.</p>
+            <p class="hint">three.js (MIT) · Pretendard (SIL OFL 1.1)</p>
+            <div class="btns">
+              <button class="btn ghost small-btn" id="copy-errors" data-i18n>오류 기록 복사</button>
+              <button class="btn ghost small-btn" id="export-data" data-i18n>기록 내보내기 (JSON)</button>
+            </div>
+            <p class="hint" id="error-count"></p>
           </div>
         </div>
       </div>
 
       <div class="modal-foot">
-        <button class="btn danger ghost" id="reset-records">기록 초기화</button>
-        <button class="btn primary" id="settings-done">완료</button>
+        <button class="btn danger ghost" id="reset-records" data-i18n>기록 초기화</button>
+        <button class="btn primary" id="settings-done" data-i18n>완료</button>
       </div>
     </div>
   </div>
+
+  <!-- 공유 시나리오 가져오기 -->
+  <div id="import" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="panel small">
+      <p class="eyebrow">SHARED SCENARIO</p>
+      <h2 id="import-name"></h2>
+      <p class="muted" id="import-desc"></p>
+      <div class="btns col">
+        <button class="btn primary" id="import-ok" data-i18n>내 시나리오에 추가</button>
+        <button class="btn ghost" id="import-cancel" data-i18n>취소</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
 
   <script type="importmap">
     { "imports": { "three": "./vendor/three.module.min.js", "three/addons/": "./vendor/addons/" } }

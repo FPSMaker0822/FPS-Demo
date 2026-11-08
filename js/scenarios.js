@@ -2,7 +2,25 @@
 import * as THREE from 'three';
 import { EYE_HEIGHT } from './world.js';
 
-const rand = (a, b) => a + Math.random() * (b - a);
+import { t } from './i18n.js';
+import { sanitizeCustom } from './custom.js';
+
+// 시드 고정 난수 (벤치마크는 매번 같은 배치로 공정하게)
+let rng = Math.random;
+export function setSeed(seed) {
+  if (seed == null) {
+    rng = Math.random;
+    return;
+  }
+  let a = seed >>> 0;
+  rng = () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let x = Math.imul(a ^ (a >>> 15), 1 | a);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rand = (a, b) => a + rng() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const angDist = (a, b) => Math.hypot(a.yaw - b.yaw, a.pitch - b.pitch);
 
@@ -129,7 +147,7 @@ class Grid {
     const used = new Set(this.g.targets.map((b) => b.data.cell));
     const free = [];
     for (let i = 0; i < this.N * this.rows; i++) if (!used.has(i) && i !== exclude) free.push(i);
-    const cell = free[Math.floor(Math.random() * free.length)];
+    const cell = free[Math.floor(rng() * free.length)];
     const b = this.g.spawn({ position: this.cellPos(cell), radius: 0.62 * this.g.diff.size });
     b.data.cell = cell;
   }
@@ -184,7 +202,7 @@ class Spider {
     let dir;
     if (this.toCenter) dir = { yaw: 0, pitch: 6 };
     else {
-      const a = Math.random() * Math.PI * 2;
+      const a = rng() * Math.PI * 2;
       const d = rand(12, 32);
       dir = { yaw: Math.cos(a) * d, pitch: clamp(6 + Math.sin(a) * d * 0.6, 0, 22) };
     }
@@ -211,7 +229,7 @@ class Micro {
     this.spawn();
   }
   spawn() {
-    const a = Math.random() * Math.PI * 2;
+    const a = rng() * Math.PI * 2;
     const d = rand(2.5, 7.5);
     this.last = {
       yaw: clamp(this.last.yaw + Math.cos(a) * d, -20, 20),
@@ -301,7 +319,7 @@ class Strafe {
     this.b = g.spawn({ position: new THREE.Vector3(rand(-4, 4), this.baseY, -13), radius: r, unique: true });
     this.b.data.hp = 1;
     this.b.setHp(1);
-    this.dir = Math.random() < 0.5 ? -1 : 1;
+    this.dir = rng() < 0.5 ? -1 : 1;
     this.v = 0;
     this.switchIn = rand(0.25, 0.9);
     this.stopFor = 0;
@@ -315,7 +333,7 @@ class Strafe {
     if (this.stopFor > 0) this.stopFor -= dt;
     if (this.switchIn <= 0) {
       this.switchIn = rand(0.22, 0.95);
-      const r = Math.random();
+      const r = rng();
       if (r < 0.15) this.stopFor = rand(0.12, 0.3); // 잠깐 멈춤
       else if (r < 0.25 && b.position.y <= this.baseY + 0.01) this.jumpV = 4.5; // 점프
       else this.dir *= -1; // 방향 전환 (AD 스트레이프)
@@ -385,7 +403,7 @@ class Reaction {
   wait() {
     this.phase = 'wait';
     this.timer = rand(1.0, 2.8);
-    this.g.hud.message('기다리세요…', 'wait');
+    this.g.hud.message(t('기다리세요…'), 'wait');
   }
   update(dt) {
     if (this.finishIn >= 0) {
@@ -411,7 +429,7 @@ class Reaction {
       g.stats.falseStarts++;
       g.addScore(-100);
       g.sfx.bad();
-      g.hud.message('너무 빨라요! −100', 'bad', 0.9);
+      g.hud.message(t('너무 빨라요! −100'), 'bad', 0.9);
       this.timer = rand(1.2, 2.8);
       return 'skip';
     }
@@ -491,7 +509,7 @@ class Rise {
     const r = 0.6 * g.diff.size;
     const b = g.spawn({ position: new THREE.Vector3(x0, 0, rand(-19, -12)), radius: r });
     b.data.x0 = x0;
-    b.data.speed = (1.5 + Math.random() * 0.8 + g.time * 0.02) * g.diff.speed;
+    b.data.speed = (1.5 + rng() * 0.8 + g.time * 0.02) * g.diff.speed;
     b.data.wf = rand(0.8, 1.6);
   }
   update(dt) {
@@ -515,12 +533,93 @@ class Rise {
   }
 }
 
-// cat: click | track | switch | reaction
+// ─────────────────────────────────────────────── 커스텀 시나리오 (유저가 만든 설정으로 동작)
+class Custom {
+  constructor(g, cfg) {
+    this.g = g;
+    this.c = cfg;
+    this.lastKill = 0;
+  }
+  start() {
+    this.lastKill = this.g.time;
+    for (let i = 0; i < this.c.count; i++) this.spawn();
+  }
+  pitchRange() {
+    const c = this.c;
+    return [Math.max(0, 6 - c.spreadPitch / 2), 6 + c.spreadPitch / 2];
+  }
+  spawn() {
+    const g = this.g, c = this.c;
+    const r = c.size * g.diff.size;
+    const bot = g.kind === 'bot';
+    const p = pickDir(g, c.spreadYaw / 2, bot ? [0, 0] : this.pitchRange(), Math.min(6, c.spreadYaw / 4));
+    const pos = g.dirPos(p.yaw, p.pitch, c.distance);
+    if (bot) pos.y = g.standY(r);
+    const b = g.spawn({ position: pos, radius: r, unique: c.type === 'track' });
+    b.data.dir = p;
+    b.data.hp = 1;
+    if (c.type === 'track') b.setHp(1);
+    const a = rng() * Math.PI * 2;
+    b.data.vy = Math.cos(a) * c.moveSpeed * g.diff.speed;
+    b.data.vp = bot ? 0 : Math.sin(a) * c.moveSpeed * g.diff.speed * 0.6;
+    b.data.turn = rand(0.4, 1.2);
+  }
+  update(dt) {
+    const g = this.g, c = this.c;
+    for (const b of [...g.targets]) {
+      if (c.lifetime > 0 && g.time - b.spawnAt >= c.lifetime) {
+        g.expire(b, 0);
+        this.spawn();
+        continue;
+      }
+      if (c.moveSpeed > 0) {
+        const d = b.data;
+        d.turn -= dt;
+        if (d.turn <= 0) {
+          d.turn = rand(0.4, 1.2);
+          const a = rng() * Math.PI * 2;
+          d.vy = Math.cos(a) * c.moveSpeed * g.diff.speed;
+          d.vp = g.kind === 'bot' ? 0 : Math.sin(a) * c.moveSpeed * g.diff.speed * 0.6;
+        }
+        d.dir.yaw += d.vy * dt;
+        d.dir.pitch += d.vp * dt;
+        const ym = c.spreadYaw / 2, [p0, p1] = this.pitchRange();
+        if (Math.abs(d.dir.yaw) > ym) {
+          d.dir.yaw = clamp(d.dir.yaw, -ym, ym);
+          d.vy *= -1;
+        }
+        if (g.kind !== 'bot' && (d.dir.pitch < p0 || d.dir.pitch > p1)) {
+          d.dir.pitch = clamp(d.dir.pitch, p0, p1);
+          d.vp *= -1;
+        }
+        const pos = g.dirPos(d.dir.yaw, d.dir.pitch, c.distance);
+        if (g.kind === 'bot') pos.y = b.position.y;
+        b.position.copy(pos);
+      }
+      if (c.type === 'track') trackGlow(b, dt);
+    }
+  }
+  onShoot(hit) {
+    if (!hit) return;
+    const g = this.g;
+    const kt = g.time - Math.max(hit.spawnAt, this.lastKill);
+    this.lastKill = g.time;
+    g.stats.killTimes.push(kt);
+    g.pop(hit, 100 + Math.round(100 * clamp((1.2 - kt) / 0.9, 0, 1)));
+    this.spawn();
+  }
+  onTick(hit, dt) {
+    if (hit && trackDamage(this.g, hit, dt, this.c.hp)) this.spawn();
+  }
+}
+
+// cat: click | track | switch | reaction | custom
 export const CATEGORIES = {
   click: { label: '클릭', color: '#ff5c7a' },
   track: { label: '트래킹', color: '#3fb8ff' },
   switch: { label: '타겟 전환', color: '#b57bff' },
   reaction: { label: '반응', color: '#ffcf4d' },
+  custom: { label: '커스텀', color: '#2ef2b0' },
 };
 
 export const SCENARIOS = {
@@ -609,5 +708,42 @@ export const ROUTINES = [
     steps: [['six', 60], ['motion', 60], ['tracking', 60], ['strafe', 60], ['switching', 60]],
   },
 ];
+
+// 약점별 추천 루틴
+ROUTINES.push(
+  {
+    id: 'trackfocus', name: '트래킹 집중', icon: '🌀',
+    desc: '부드러운 추적, 반응 추적, 추적 전환을 차례로. 트래킹이 약할 때 추천.',
+    steps: [['tracking', 60], ['strafe', 60], ['switching', 60]],
+  },
+  {
+    id: 'switchfocus', name: '타겟 전환 집중', icon: '🔀',
+    desc: '여러 타겟 사이를 빠르게 옮겨 다니는 연습. 전환이 약할 때 추천.',
+    steps: [['switching', 60], ['rise', 60], ['motion', 60]],
+  }
+);
+export const RECOMMEND = { click: 'basics', track: 'trackfocus', switch: 'switchfocus', reaction: 'quick' };
+
+// 벤치마크: 고정 시드 · 보통 난이도 · 45초 (반응속도는 10라운드)
+export const BENCHMARK = {
+  duration: 45,
+  difficulty: 'normal',
+  steps: ['six', 'motion', 'spider', 'micro', 'strafe', 'tracking', 'switching', 'reaction'],
+};
+
+/** 커스텀 시나리오를 SCENARIOS에 등록 (id: custom-xxxx) */
+export function registerCustom(cfg) {
+  const c = sanitizeCustom(cfg);
+  const id = 'custom-' + c.id;
+  SCENARIOS[id] = {
+    name: c.name, custom: true, cfg: c, cat: 'custom', tag: c.type === 'track' ? '트래킹' : '클릭',
+    metric: c.type === 'track' ? 'track' : 'kill', mode: 'timed', hold: c.type === 'track',
+    desc: '', create: (g) => new Custom(g, c),
+  };
+  return id;
+}
+export function unregisterCustom(id) {
+  if (SCENARIOS[id]?.custom) delete SCENARIOS[id];
+}
 
 export { EYE_HEIGHT };

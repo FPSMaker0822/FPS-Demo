@@ -1,0 +1,12 @@
+{
+  "name": "popshot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser FPS aim trainer (static site, no build step)",
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "test": "node --test tests/*.test.mjs",
+    "test:e2e": "node tests/e2e.mjs"
+  }
+}

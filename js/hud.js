@@ -1,5 +1,6 @@
 // HUD, 크로스헤어, 플로팅 텍스트
 import * as THREE from 'three';
+import { t } from './i18n.js';
 
 export function drawCrosshair(canvas, ch, cssSize = 96) {
   const dpr = window.devicePixelRatio || 1;
@@ -82,11 +83,11 @@ export class Hud {
     if (!s) return;
     let frac;
     if (game.def.mode === 'rounds') {
-      this.set('timeLabel', '라운드');
+      this.set('timeLabel', t('라운드'));
       this.set('time', game.scenario.progressText());
       frac = 1 - game.scenario.round / game.scenario.rounds;
     } else {
-      this.set('timeLabel', '남은 시간');
+      this.set('timeLabel', t('남은 시간'));
       const left = game.state === 'countdown' ? game.duration : Math.max(0, game.duration - game.time);
       this.set('time', left.toFixed(1));
       frac = left / game.duration;
@@ -96,7 +97,7 @@ export class Hud {
       this.cache.progress = w;
       this.el.progress.style.width = w;
     }
-    this.set('streakLabel', game.def.hold ? '처치' : '연속');
+    this.set('streakLabel', game.def.hold ? t('처치') : t('연속'));
     // 점수 카운트업
     const now = performance.now();
     const dt = Math.min(0.1, (now - (this._t || now)) / 1000);
