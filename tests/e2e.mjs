@@ -34,8 +34,11 @@ const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=sw
 const errors = [];
 let failed = false;
 
+const openPages = new Set();
 async function newPage(storage) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  openPages.add(page);
+  page.setDefaultTimeout(45000);
   // 외부 리소스(폰트 CDN)는 차단해서 네트워크 상태와 무관하게 테스트
   await page.route('**/*', (route) => (route.request().url().startsWith(BASE) ? route.continue() : route.abort()));
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
@@ -73,6 +76,10 @@ async function step(name, fn) {
   } catch (e) {
     failed = true;
     console.log(`FAIL ${name}\n     ${e.message.split('\n')[0]}`);
+  } finally {
+    // 실패해도 페이지를 닫아서, 남은 WebGL 렌더링이 다음 테스트를 느리게 만들지 않게
+    for (const p of openPages) await p.close().catch(() => {});
+    openPages.clear();
   }
 }
 
@@ -132,7 +139,7 @@ await step('every built-in scenario runs and produces results', async () => {
     await skipCountdown(page);
     await page.waitForFunction(() => window.popshot.game.state === 'playing');
     if (id !== 'reaction') {
-      await page.waitForFunction(() => window.popshot.game.targets.length > 0, null, { timeout: 5000 });
+      await page.waitForFunction(() => window.popshot.game.targets.length > 0, null, { timeout: 20000 });
       for (let i = 0; i < 3; i++) {
         await aimAndFire(page);
         await page.waitForTimeout(40);
