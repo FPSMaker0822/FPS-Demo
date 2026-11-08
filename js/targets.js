@@ -1,5 +1,5 @@
 // 타겟(휴먼 봇 / 구체 / 풍선), 파괴 이펙트, 히트 판정
-import * as THREE from '../vendor/three.module.min.js';
+import * as THREE from 'three';
 
 export const PALETTE = ['#ff4d6d', '#ffb703', '#4cc9f0', '#80ed99', '#c77dff', '#ff8fab', '#f77f00', '#3a86ff'];
 
@@ -35,7 +35,9 @@ function makeMaterial(kind, color) {
     });
   }
   if (kind === 'orb') {
-    return new THREE.MeshStandardMaterial({ color, roughness: 0.25, metalness: 0.1, emissive: color, emissiveIntensity: 0.55 });
+    return new THREE.MeshPhysicalMaterial({
+      color, roughness: 0.25, metalness: 0.05, clearcoat: 1, clearcoatRoughness: 0.1, emissive: color, emissiveIntensity: 0.4,
+    });
   }
   return new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.15, emissive: color, emissiveIntensity: 0.12 });
 }
@@ -89,6 +91,9 @@ export class Target {
       this.group.add(new THREE.Mesh(SPHERE, this.material));
     }
 
+    this.group.traverse((o) => {
+      if (o.isMesh) o.castShadow = true;
+    });
     this.group.position.copy(position);
     this.group.scale.setScalar(0.001);
     this.phase = Math.random() * Math.PI * 2;
@@ -261,14 +266,18 @@ export class Effects {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     const mat = new THREE.PointsMaterial({
-      color, size: 0.14 + radius * 0.3, map: DOT_TEX, transparent: true, depthWrite: false, sizeAttenuation: true,
+      color: new THREE.Color(color).multiplyScalar(1.6), size: 0.1 + radius * 0.24, map: DOT_TEX, transparent: true,
+      depthWrite: false, sizeAttenuation: true, blending: THREE.AdditiveBlending, toneMapped: false,
     });
     const points = new THREE.Points(geo, mat);
     this.scene.add(points);
 
     let ringMesh = null;
     if (ring) {
-      const rm = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false });
+      const rm = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(color).lerp(new THREE.Color('#ffffff'), 0.5).multiplyScalar(1.5), transparent: true, opacity: 0.9,
+        side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false,
+      });
       ringMesh = new THREE.Mesh(RING_GEO, rm);
       ringMesh.position.copy(pos);
       ringMesh.lookAt(this.camera.position);

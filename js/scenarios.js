@@ -1,5 +1,5 @@
 // 연습 시나리오 & 루틴 정의
-import * as THREE from '../vendor/three.module.min.js';
+import * as THREE from 'three';
 import { EYE_HEIGHT } from './world.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);

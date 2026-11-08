@@ -73,6 +73,7 @@ function fireLabel() {
 function applySettings() {
   world.setFov(settings.fov);
   if (world.theme !== settings.theme) world.setTheme(settings.theme);
+  if (world.quality !== settings.graphics) world.setQuality(settings.graphics);
   sfx.setVolume(settings.volume);
   hud.setCrosshair(settings.crosshair);
   hud.showFps(settings.showFps);
@@ -472,6 +473,7 @@ function fillSettings() {
   $('set-fov').value = settings.fov;
   $('set-vol').value = Math.round(settings.volume * 100);
   $('set-fps').checked = settings.showFps;
+  $('set-gfx').value = settings.graphics;
   const ch = settings.crosshair;
   $('ch-color').value = ch.color;
   $('ch-length').value = ch.length;
@@ -665,6 +667,7 @@ function readSettings(e) {
   settings.fov = Number($('set-fov').value);
   settings.volume = Number($('set-vol').value) / 100;
   settings.showFps = $('set-fps').checked;
+  settings.graphics = $('set-gfx').value;
   Object.assign(settings.crosshair, {
     color: $('ch-color').value,
     length: Number($('ch-length').value),

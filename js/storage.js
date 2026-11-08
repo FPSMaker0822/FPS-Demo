@@ -28,6 +28,7 @@ export const DEFAULT_SETTINGS = {
   humanTracking: true, // 트래킹 모드에서 움직이는 사람 표적 사용
   targetColor: 'auto', // auto | rainbow | #hex
   theme: 'midnight',
+  graphics: 'high', // high: 블룸 + 그림자 | low: 가볍게
   duration: 60,
   difficulty: 'normal',
 };

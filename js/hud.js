@@ -1,5 +1,5 @@
 // HUD, 크로스헤어, 플로팅 텍스트
-import * as THREE from '../vendor/three.module.min.js';
+import * as THREE from 'three';
 
 export function drawCrosshair(canvas, ch, cssSize = 96) {
   const dpr = window.devicePixelRatio || 1;
@@ -50,6 +50,12 @@ export class Hud {
       crosshair: $('crosshair'),
       progress: $('hud-progress'),
       streakLabel: $('hud-streak-label'),
+      center: document.querySelector('.hud-center'),
+      accRing: $('hud-acc-ring'),
+      hits: $('hud-hits'),
+      combo: $('hud-combo'),
+      feed: $('killfeed'),
+      edge: $('edge-flash'),
     };
     this.cache = {};
     this.msgToken = 0;
@@ -91,14 +97,75 @@ export class Hud {
       this.el.progress.style.width = w;
     }
     this.set('streakLabel', game.def.hold ? '처치' : '연속');
-    this.set('score', String(Math.round(s.score)));
-    this.set('acc', s.shots ? `${Math.round((s.hits / s.shots) * 100)}%` : '—');
-    this.set('streak', game.def.hold ? `${s.pops}개` : String(s.streak));
+    // 점수 카운트업
+    const now = performance.now();
+    const dt = Math.min(0.1, (now - (this._t || now)) / 1000);
+    this._t = now;
+    if (this.shownScore === undefined || s.score < this.shownScore - 1e-6 && s.score === 0) this.shownScore = s.score;
+    const diff = s.score - this.shownScore;
+    this.shownScore = Math.abs(diff) < 1 ? s.score : this.shownScore + diff * Math.min(1, dt * 14);
+    this.set('score', Math.round(this.shownScore).toLocaleString());
+    const acc = s.shots ? s.hits / s.shots : 0;
+    this.set('acc', s.shots ? `${Math.round(acc * 100)}` : '—');
+    this.set('hits', `${s.hits} / ${s.shots}`);
+    const off = (100.5 * (1 - acc)).toFixed(1);
+    if (this.cache.ring !== off) {
+      this.cache.ring = off;
+      this.el.accRing.style.strokeDashoffset = off;
+      this.el.accRing.style.stroke = acc >= 0.8 || !s.shots ? '' : acc >= 0.6 ? 'var(--gold)' : 'var(--danger)';
+    }
+    this.set('streak', game.def.hold ? String(s.pops) : String(s.streak));
+    // 마지막 5초 경고
+    const urgent = game.def.mode === 'timed' && game.state === 'playing' && game.duration - game.time <= 5;
+    if (this.cache.urgent !== urgent) {
+      this.cache.urgent = urgent;
+      this.el.center.classList.toggle('urgent', urgent);
+    }
+    // 콤보
+    const combo = game.def.hold ? 0 : s.streak;
+    if (this.cache.combo !== combo) {
+      const c = this.el.combo;
+      if (combo >= 3) {
+        c.innerHTML = `<b>${combo}</b>COMBO`;
+        c.classList.add('on');
+        c.classList.remove('pop');
+        void c.offsetWidth;
+        c.classList.add('pop');
+      } else c.classList.remove('on');
+      this.cache.combo = combo;
+    }
+  }
+
+  reset() {
+    this.shownScore = undefined;
+    this.cache = {};
+    this.el.feed.textContent = '';
+    this.el.combo.classList.remove('on');
+    this.el.center.classList.remove('urgent');
+  }
+
+  /** 오른쪽 킬피드 */
+  feed(main, sub, color, cls = '') {
+    const d = document.createElement('div');
+    d.className = 'kf ' + cls;
+    d.innerHTML = `<i style="background:${color}"></i><b>${main}</b>${sub ? `<span>${sub}</span>` : ''}`;
+    this.el.feed.prepend(d);
+    while (this.el.feed.children.length > 5) this.el.feed.lastChild.remove();
+    setTimeout(() => d.remove(), 2400);
+  }
+
+  edgeFlash() {
+    const e = this.el.edge;
+    e.classList.remove('on');
+    void e.offsetWidth;
+    e.classList.add('on');
   }
 
   message(text, cls = '', dur = 0) {
     const token = ++this.msgToken;
     this.el.msg.textContent = text;
+    this.el.msg.className = '';
+    void this.el.msg.offsetWidth; // 애니메이션 재시작
     this.el.msg.className = cls;
     if (dur > 0) {
       setTimeout(() => {
@@ -114,8 +181,11 @@ export class Hud {
     const h = this.el.hit;
     h.classList.toggle('head', head);
     h.classList.remove('on');
+    const ch = this.el.crosshair;
+    ch.classList.remove('kick');
     void h.offsetWidth;
     h.classList.add('on');
+    ch.classList.add('kick');
   }
 
   float(worldPos, camera, text, cls = '') {

@@ -1,5 +1,5 @@
 // 게임 루프, 입력(포인터 락), 상태 머신
-import * as THREE from '../vendor/three.module.min.js';
+import * as THREE from 'three';
 import { Target, Effects, rayHit, PALETTE, TARGET_KINDS, bottomOffsetFor } from './targets.js';
 import { SCENARIOS, DIFFICULTY } from './scenarios.js';
 import { EYE_HEIGHT } from './world.js';
@@ -201,6 +201,9 @@ export class Game {
     this.countdown = 3;
     this.lastCount = 0;
     this.releaseAll();
+    this.hud.reset();
+    this.lastTickSec = 99;
+    this._ktLen = 0;
     this.hud.setScenario(this.def.name, routineText);
     this.hud.message('');
     this.hud.show(true);
@@ -318,6 +321,7 @@ export class Game {
       this.targets = this.targets.filter((t) => t !== b);
       b.startFade();
       this.fading.push(b);
+      this.feedKill(points, '처치', b.color);
       this.addScore(points, pos.setY(pos.y + b.topOffset() * 0.7), text);
       return;
     } else {
@@ -325,6 +329,7 @@ export class Game {
       if (b.kind === 'balloon') this.sfx.pop(b.radius);
       else this.sfx.kill(false);
     }
+    this.feedKill(points, text, b.color);
     const textPos = pos.setY(pos.y + b.topOffset() * 0.7);
     this.addScore(points, textPos, text, head ? 'head' : undefined);
     this.remove(b);
@@ -337,7 +342,16 @@ export class Game {
     this.stats.streak = 0;
     this.addScore(-penalty);
     this.hud.float(b.position, this.camera, penalty ? `놓침 −${penalty}` : '놓침', 'bad');
+    this.hud.edgeFlash();
     this.remove(b);
+  }
+
+  feedKill(points, text, color) {
+    const kts = this.stats.killTimes;
+    let sub = text && !text.startsWith('+') && !text.startsWith('HEAD') ? text : '';
+    if (!sub && kts.length > this._ktLen) sub = `${Math.round(kts[kts.length - 1] * 1000)}ms`;
+    this._ktLen = kts.length;
+    this.hud.feed(`+${points}`, sub, color, points >= 170 ? 'great' : '');
   }
 
   addScore(points, pos, text, cls) {
@@ -370,6 +384,7 @@ export class Game {
       this.hud.hitmarker(head);
     } else {
       s.misses++;
+      if (s.streak >= 5) this.hud.message('COMBO BREAK', 'bad', 0.5);
       s.streak = 0;
       this.sfx.miss();
     }
@@ -481,6 +496,13 @@ export class Game {
       }
       this.scenario.update?.(dt);
       if (this.state !== 'playing') return;
+      if (this.def.mode === 'timed') {
+        const sec = Math.ceil(this.duration - this.time);
+        if (sec <= 3 && sec >= 1 && sec !== this.lastTickSec) {
+          this.lastTickSec = sec;
+          this.sfx.beep(760, 0.07, 0.12);
+        }
+      }
       if (this.def.mode === 'timed' && this.time >= this.duration) {
         this.finish();
         return;
