@@ -27,7 +27,6 @@ export class Game {
     this.yaw = 0;
     this.pitch = 0;
     this.dpc = 0.028; // 도/카운트
-    this.mouseDown = false;
     this.holdAcc = 0;
     this.colorIndex = 0;
     this.idleT = 0;
@@ -35,14 +34,27 @@ export class Game {
     this._dir = new THREE.Vector3();
 
     document.addEventListener('mousemove', (e) => this.onMouseMove(e));
-    document.addEventListener('mousedown', (e) => this.onMouseDown(e));
-    document.addEventListener('mouseup', (e) => {
-      if (e.button === 0) this.mouseDown = false;
+    this.held = new Set(); // 눌려 있는 발사 입력 (마우스 버튼/키)
+    document.addEventListener('mousedown', (e) => {
+      if (this.isFireMouse(e.button)) this.firePress('m' + e.button);
     });
+    document.addEventListener('mouseup', (e) => this.fireRelease('m' + e.button));
+    document.addEventListener('keyup', (e) => this.fireRelease('k' + e.code));
+    window.addEventListener('blur', () => this.releaseAll());
     document.addEventListener('pointerlockchange', () => this.onLockChange());
     document.addEventListener('pointerlockerror', () => this.lockFailed());
     document.addEventListener('keydown', (e) => {
+      if (this.captureKey) return;
+      const fk = this.getSettings().fireKey;
+      if (fk && fk.type === 'key' && e.code === fk.code && this.locked) {
+        e.preventDefault();
+        if (!e.repeat) this.firePress('k' + e.code);
+        return;
+      }
       if (e.code === 'KeyR' && (this.state === 'playing' || this.state === 'countdown')) this.restart();
+    });
+    document.addEventListener('contextmenu', (e) => {
+      if (this.locked) e.preventDefault();
     });
 
     this.initDecor();
@@ -107,7 +119,7 @@ export class Game {
     this.prevState = this.state;
     this.state = 'paused';
     this.pausedAt = performance.now();
-    this.mouseDown = false;
+    this.releaseAll();
     this.hud.setOnTarget(false);
     this.onPause?.();
   }
@@ -129,11 +141,31 @@ export class Game {
     this.applyCamera();
   }
 
-  onMouseDown(e) {
-    if (!this.locked || e.button !== 0) return;
-    this.mouseDown = true;
+  isFireMouse(button) {
+    if (button === 0) return true;
+    const fk = this.getSettings().fireKey;
+    return !!fk && fk.type === 'mouse' && fk.button === button;
+  }
+
+  firePress(id) {
+    if (!this.locked || this.held.has(id)) return;
+    const wasHeld = this.held.size > 0;
+    this.held.add(id);
+    if (wasHeld) return; // 이미 다른 입력으로 누르고 있음
     this.holdAcc = TICK; // 누르는 즉시 첫 판정
     this.shoot();
+  }
+
+  fireRelease(id) {
+    this.held.delete(id);
+  }
+
+  releaseAll() {
+    this.held.clear();
+  }
+
+  get mouseDown() {
+    return this.held.size > 0;
   }
 
   applyCamera() {
@@ -164,7 +196,7 @@ export class Game {
     this.state = 'countdown';
     this.countdown = 3;
     this.lastCount = 0;
-    this.mouseDown = false;
+    this.releaseAll();
     this.hud.setScenario(this.def.name, routineText);
     this.hud.message('');
     this.hud.show(true);
@@ -179,7 +211,7 @@ export class Game {
   finish() {
     if (!this.active) return;
     this.state = 'results';
-    this.mouseDown = false;
+    this.releaseAll();
     this.clearTargets();
     this.hud.message('');
     this.hud.setOnTarget(false);
@@ -192,7 +224,7 @@ export class Game {
 
   quit() {
     this.state = 'idle';
-    this.mouseDown = false;
+    this.releaseAll();
     this.clearTargets();
     this.hud.show(false);
     this.hud.message('');
@@ -244,6 +276,10 @@ export class Game {
   }
 
   spawn(opts) {
+    // 풍선이 바닥에 박히지 않도록 최소 높이 보장
+    const r = opts.radius ?? 0.6;
+    const minY = r * 1.25 + 0.8;
+    if (opts.position.y < minY) opts.position.y = minY;
     const b = new Balloon(this.world.scene, { color: this.nextColor(), ...opts });
     b.spawnAt = this.time;
     this.targets.push(b);
@@ -324,7 +360,7 @@ export class Game {
     if (this.decor.length) return;
     for (let i = 0; i < 14; i++) {
       const b = new Balloon(this.world.scene, {
-        position: new THREE.Vector3((Math.random() * 2 - 1) * 14, Math.random() * 16 - 2, -10 - Math.random() * 18),
+        position: new THREE.Vector3((Math.random() * 2 - 1) * 14, 1.5 + Math.random() * 14, -10 - Math.random() * 18),
         radius: 0.5 + Math.random() * 0.5,
         color: PALETTE[i % PALETTE.length],
       });
@@ -349,7 +385,8 @@ export class Game {
       for (const b of this.decor) {
         b.position.y += b.data.speed * dt;
         if (b.position.y > 16) {
-          b.position.set((Math.random() * 2 - 1) * 14, -2, -10 - Math.random() * 18);
+          b.position.set((Math.random() * 2 - 1) * 14, 1.2, -10 - Math.random() * 18);
+          b.age = 0; // 다시 나타나는 애니메이션
         }
         b.update(dt);
       }

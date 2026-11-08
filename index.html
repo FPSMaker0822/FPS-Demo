@@ -35,7 +35,7 @@
     <div id="hud-msg"></div>
     <div id="float-layer"></div>
     <div id="fps" class="hidden"></div>
-    <div class="hud-hint">ESC 일시정지 · R 즉시 재시작</div>
+    <div class="hud-hint" id="hud-hint">ESC 일시정지 · R 즉시 재시작</div>
   </div>
 
   <!-- 메인 메뉴 -->
@@ -71,7 +71,7 @@
       <h2 class="section-title">루틴 <small>여러 시나리오를 연속으로</small></h2>
       <div id="routine-grid" class="cards routines"></div>
 
-      <p class="footnote" id="footnote">좌클릭 사격 · ESC 일시정지 · R 재시작 · 기록은 이 브라우저에 저장됩니다</p>
+      <p class="footnote" id="footnote"></p>
       <p class="footnote warn hidden" id="mobile-warn">이 게임은 마우스가 있는 PC 브라우저(Chrome / Edge / Firefox)에서 플레이하세요.</p>
     </div>
   </section>
@@ -127,7 +127,7 @@
       <div class="settings-grid">
         <fieldset>
           <legend>감도</legend>
-          <label>게임 기준
+          <label>사용할 게임
             <select id="set-game"></select>
           </label>
           <label><span id="set-sens-label">인게임 감도</span>
@@ -137,7 +137,8 @@
             <input type="number" id="set-dpi" step="50" min="100" />
           </label>
           <div class="readout" id="sens-readout"></div>
-          <p class="hint">평소 쓰는 게임과 감도를 고르면 같은 회전량으로 맞춰집니다. 정확한 변환을 위해 OS의 "포인터 정밀도 향상"은 꺼두세요.</p>
+          <button class="btn small-btn" id="apply-fov"></button>
+          <p class="hint">감도는 게임마다 따로 저장됩니다. 정확한 변환을 위해 OS의 "포인터 정밀도 향상"은 꺼두세요.</p>
         </fieldset>
 
         <fieldset>
@@ -172,6 +173,32 @@
               <label>간격 <b id="ch-gap-v"></b><input type="range" id="ch-gap" min="0" max="14" step="1" /></label>
               <label class="check"><input type="checkbox" id="ch-dot" /> 중앙 점</label>
               <label class="check"><input type="checkbox" id="ch-outline" /> 외곽선</label>
+            </div>
+          </div>
+        </fieldset>
+        <fieldset class="span-all">
+          <legend>게임별 감도</legend>
+          <p class="hint">각 게임의 저장된 감도와, 지금 쓰는 감도와 <b>같은 회전량(cm/360)</b>이 되는 환산값입니다. 행을 눌러 그 게임으로 전환하세요.</p>
+          <div class="table-scroll">
+            <table class="sens-table">
+              <thead><tr><th>게임</th><th>저장된 감도</th><th>cm/360</th><th>현재와 같은 감도</th><th></th></tr></thead>
+              <tbody id="sens-table"></tbody>
+            </table>
+          </div>
+        </fieldset>
+
+        <fieldset class="span-all">
+          <legend>조작</legend>
+          <div class="bind-row">
+            <div>
+              <div class="bind-title">발사</div>
+              <div class="hint">마우스 왼쪽 클릭은 항상 발사됩니다. 아래에 추가 발사 키(키보드 키 또는 마우스 버튼)를 지정할 수 있어요.</div>
+            </div>
+            <div class="bind-ctrls">
+              <span class="keycap">좌클릭</span>
+              <span class="muted">+</span>
+              <button class="btn keybind" id="fire-key-btn"></button>
+              <button class="btn ghost small-btn" id="fire-key-clear">지우기</button>
             </div>
           </div>
         </fieldset>

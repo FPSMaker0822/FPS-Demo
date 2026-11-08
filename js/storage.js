@@ -3,18 +3,24 @@
 const KEY = 'popshot.v1';
 
 // 게임별 yaw 값 (도/카운트). 감도 × yaw = 마우스 1카운트당 회전 각도
+// fov: 해당 게임의 16:9 기준 수평 시야각 (고정/대표값이 있는 경우만)
 export const SENS_PRESETS = {
-  valorant: { label: 'Valorant', yaw: 0.07 },
-  cs2: { label: 'CS2 / Apex Legends', yaw: 0.022 },
-  ow2: { label: 'Overwatch 2', yaw: 0.0066 },
-  cm360: { label: 'cm/360 직접 입력', yaw: null },
+  valorant: { label: 'Valorant', yaw: 0.07, fov: 103, def: 0.4 },
+  cs2: { label: 'Counter-Strike 2', yaw: 0.022, fov: 106.26, def: 1.25 },
+  apex: { label: 'Apex Legends', yaw: 0.022, fov: null, def: 1.25 },
+  ow2: { label: 'Overwatch 2', yaw: 0.0066, fov: 103, def: 4.2 },
+  cod: { label: 'Call of Duty (MW / 워존)', yaw: 0.0066, fov: null, def: 4.2 },
+  fortnite: { label: 'Fortnite (X 감도 %)', yaw: 0.005555, fov: null, def: 5 },
+  r6: { label: 'Rainbow Six Siege (배율 0.02)', yaw: 0.00572958, fov: null, def: 5 },
+  cm360: { label: 'cm/360 직접 입력', yaw: null, fov: null, def: 40 },
 };
 
 export const DEFAULT_SETTINGS = {
   sensGame: 'valorant',
-  sens: 0.4,
+  sensByGame: {}, // 게임별로 저장된 감도 { valorant: 0.4, cs2: 1.25, ... }
   dpi: 800,
   fov: 103,
+  fireKey: null, // 추가 발사 입력: { type: 'key', code } | { type: 'mouse', button }
   crosshair: { color: '#2ef2b0', length: 6, thickness: 2, gap: 3, dot: false, outline: true },
   volume: 0.6,
   showFps: false,
@@ -43,8 +49,15 @@ export function load() {
     raw = null;
   }
   raw = raw || {};
+  const settings = merge(DEFAULT_SETTINGS, raw.settings || {});
+  settings.sensByGame = { ...((raw.settings && raw.settings.sensByGame) || {}) };
+  // 이전 버전(단일 감도) 마이그레이션
+  if (raw.settings && raw.settings.sens != null && settings.sensByGame[settings.sensGame] == null) {
+    settings.sensByGame[settings.sensGame] = raw.settings.sens;
+  }
+  if (!SENS_PRESETS[settings.sensGame]) settings.sensGame = 'valorant';
   return {
-    settings: merge(DEFAULT_SETTINGS, raw.settings || {}),
+    settings,
     best: raw.best || {},
     history: raw.history || {},
   };
@@ -64,20 +77,33 @@ export function resetRecords(data) {
   save(data);
 }
 
-/** 마우스 1카운트당 회전 각도(도) */
-export function degPerCount(s) {
-  if (s.sensGame === 'cm360') {
-    const cm = Math.max(1, Number(s.sens) || 30);
-    const dpi = Math.max(50, Number(s.dpi) || 800);
-    return 360 / ((cm / 2.54) * dpi);
-  }
-  const preset = SENS_PRESETS[s.sensGame] || SENS_PRESETS.valorant;
-  return Math.max(0.00001, (Number(s.sens) || 0) * preset.yaw);
+/** 현재 선택된(또는 지정한) 게임의 저장된 감도 */
+export function getSens(s, game = s.sensGame) {
+  const v = Number(s.sensByGame[game]);
+  return v > 0 ? v : SENS_PRESETS[game].def;
 }
 
-export function cm360(s) {
+/** 마우스 1카운트당 회전 각도(도) */
+export function degPerCount(s, game = s.sensGame, sens = getSens(s, game)) {
   const dpi = Math.max(50, Number(s.dpi) || 800);
-  return (360 / degPerCount(s) / dpi) * 2.54;
+  if (game === 'cm360') return 360 / ((Math.max(1, sens) / 2.54) * dpi);
+  return Math.max(0.00001, sens * SENS_PRESETS[game].yaw);
+}
+
+export function cm360(s, game = s.sensGame) {
+  const dpi = Math.max(50, Number(s.dpi) || 800);
+  return (360 / degPerCount(s, game) / dpi) * 2.54;
+}
+
+/** 현재 감도(회전량)와 똑같아지는 다른 게임의 감도 */
+export function convertTo(s, game) {
+  const dpc = degPerCount(s);
+  if (game === 'cm360') return cm360(s);
+  return dpc / SENS_PRESETS[game].yaw;
+}
+
+export function fmtSens(v) {
+  return v >= 10 ? v.toFixed(2) : v >= 1 ? v.toFixed(3) : v.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
 }
 
 export function recordKey(scenarioId, difficulty, duration, mode) {

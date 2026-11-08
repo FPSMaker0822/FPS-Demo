@@ -5,15 +5,6 @@ export const PALETTE = ['#ff4d6d', '#ffb703', '#4cc9f0', '#80ed99', '#c77dff', '
 
 const SPHERE = new THREE.SphereGeometry(1, 36, 24);
 const KNOT = new THREE.ConeGeometry(0.14, 0.22, 12);
-const STRING_GEO = (() => {
-  const pts = [];
-  for (let i = 0; i <= 14; i++) {
-    const t = i / 14;
-    pts.push(new THREE.Vector3(Math.sin(t * Math.PI * 2.2) * 0.09, -1.28 - t * 2.6, 0));
-  }
-  return new THREE.BufferGeometry().setFromPoints(pts);
-})();
-const STRING_MAT = new THREE.LineBasicMaterial({ color: '#e8ecf8', transparent: true, opacity: 0.5 });
 const RING_GEO = new THREE.RingGeometry(0.85, 1, 40);
 
 const matCache = new Map();
@@ -39,7 +30,7 @@ const easeOutBack = (k) => {
 };
 
 export class Balloon {
-  constructor(scene, { position, radius = 0.6, color = PALETTE[0], string = true, unique = false }) {
+  constructor(scene, { position, radius = 0.6, color = PALETTE[0], unique = false }) {
     this.scene = scene;
     this.radius = radius;
     this.color = color;
@@ -51,7 +42,6 @@ export class Balloon {
     const knot = new THREE.Mesh(KNOT, this.material);
     knot.position.y = -1.18;
     this.group.add(body, knot);
-    if (string) this.group.add(new THREE.Line(STRING_GEO, STRING_MAT));
     this.group.position.copy(position);
     this.group.scale.setScalar(0.001);
     this.phase = Math.random() * Math.PI * 2;

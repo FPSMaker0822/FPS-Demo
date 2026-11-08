@@ -54,7 +54,10 @@ function applySettings() {
   $('sens-chip').innerHTML =
     settings.sensGame === 'cm360'
       ? `🖱 <b>${cm.toFixed(1)} cm/360</b> · ${settings.dpi} DPI`
-      : `🖱 ${preset.label} <b>${settings.sens}</b> · ${settings.dpi} DPI · ${cm.toFixed(1)} cm/360`;
+      : `🖱 ${preset.label} <b>${store.fmtSens(store.getSens(settings))}</b> · ${settings.dpi} DPI · ${cm.toFixed(1)} cm/360`;
+  const fire = settings.fireKey ? `좌클릭 / ${bindLabel(settings.fireKey)}` : '좌클릭';
+  $('footnote').textContent = `${fire} 사격 · ESC 일시정지 · R 재시작 · 기록은 이 브라우저에 저장됩니다`;
+  $('hud-hint').textContent = `${fire} 사격 · ESC 일시정지 · R 즉시 재시작`;
   store.save(data);
 }
 
@@ -297,7 +300,7 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     enterAction?.();
   }
-  if (e.code === 'Escape' && !$('settings').classList.contains('hidden')) closeSettings();
+  if (e.code === 'Escape' && !capturing && !$('settings').classList.contains('hidden')) closeSettings();
 });
 
 // ───────────────────────── 일시정지
@@ -323,9 +326,8 @@ for (const [k, p] of Object.entries(store.SENS_PRESETS)) {
 
 function fillSettings() {
   setGame.value = settings.sensGame;
-  $('set-sens').value = settings.sens;
+  $('set-sens').value = store.fmtSens(store.getSens(settings));
   $('set-dpi').value = settings.dpi;
-  $('set-sens-label').textContent = settings.sensGame === 'cm360' ? 'cm/360' : '인게임 감도';
   $('set-fov').value = settings.fov;
   $('set-color').value = settings.balloonColor;
   $('set-vol').value = Math.round(settings.volume * 100);
@@ -341,36 +343,98 @@ function fillSettings() {
 }
 
 function updateSettingsReadouts() {
-  $('set-fov-v').textContent = `${settings.fov}°`;
+  const game = settings.sensGame;
+  const preset = store.SENS_PRESETS[game];
+  $('set-sens-label').textContent = game === 'cm360' ? 'cm/360' : `${preset.label} 감도`;
+  $('set-fov').value = settings.fov;
+  $('set-fov-v').textContent = `${Math.round(settings.fov * 100) / 100}°`;
   $('set-vol-v').textContent = `${Math.round(settings.volume * 100)}%`;
   $('ch-length-v').textContent = settings.crosshair.length;
   $('ch-thickness-v').textContent = settings.crosshair.thickness;
   $('ch-gap-v').textContent = settings.crosshair.gap;
   const dpc = store.degPerCount(settings);
   $('sens-readout').innerHTML = `<b>${store.cm360(settings).toFixed(2)} cm/360</b><span>${dpc.toFixed(4)}°/count</span>`;
+  const fovBtn = $('apply-fov');
+  fovBtn.classList.toggle('hidden', !preset.fov);
+  if (preset.fov) {
+    const same = Math.abs(settings.fov - preset.fov) < 0.01;
+    fovBtn.textContent = same ? `✓ ${preset.label} 시야각 적용됨 (${preset.fov}°)` : `${preset.label} 시야각 적용 (${preset.fov}°)`;
+    fovBtn.disabled = same;
+  }
   drawCrosshair($('ch-preview'), settings.crosshair, 120);
+  renderSensTable();
+  $('fire-key-btn').textContent = capturing ? '키나 마우스 버튼을 누르세요… (Esc 취소)' : settings.fireKey ? bindLabel(settings.fireKey) : '+ 추가 발사 키 지정';
+  $('fire-key-btn').classList.toggle('capturing', capturing);
+  $('fire-key-clear').classList.toggle('hidden', !settings.fireKey);
 }
 
-function readSettings() {
-  const prevGame = settings.sensGame;
-  settings.sensGame = setGame.value;
-  if (prevGame !== settings.sensGame) {
-    // 게임 기준이 바뀌면 같은 cm/360을 유지하도록 감도 환산
-    const cm = store.cm360({ ...settings, sensGame: prevGame });
-    if (settings.sensGame === 'cm360') settings.sens = Number(cm.toFixed(2));
-    else {
-      const yaw = store.SENS_PRESETS[settings.sensGame].yaw;
-      const dpc = 360 / ((cm / 2.54) * settings.dpi);
-      settings.sens = Number((dpc / yaw).toFixed(3));
-    }
-    $('set-sens').value = settings.sens;
-    $('set-sens-label').textContent = settings.sensGame === 'cm360' ? 'cm/360' : '인게임 감도';
-  } else {
-    const v = parseFloat($('set-sens').value);
-    if (v > 0) settings.sens = v;
+function renderSensTable() {
+  const rows = [];
+  for (const [k, p] of Object.entries(store.SENS_PRESETS)) {
+    if (k === 'cm360') continue;
+    const saved = settings.sensByGame[k];
+    const has = Number(saved) > 0;
+    const conv = store.convertTo(settings, k);
+    const active = k === settings.sensGame;
+    rows.push(`<tr data-game="${k}" class="${active ? 'active' : ''}">
+      <td>${active ? '▶ ' : ''}${p.label}</td>
+      <td class="${has ? '' : 'unset'}">${has ? store.fmtSens(Number(saved)) : '미설정'}</td>
+      <td>${has ? store.cm360(settings, k).toFixed(1) : '—'}</td>
+      <td>${store.fmtSens(conv)}</td>
+      <td>${active ? '' : `<button class="btn ghost small-btn" data-copy="${k}" title="현재 감도와 같은 회전량으로 저장">환산값 저장</button>`}</td>
+    </tr>`);
   }
-  const dpi = parseInt($('set-dpi').value, 10);
-  if (dpi >= 50) settings.dpi = dpi;
+  $('sens-table').innerHTML = rows.join('');
+}
+
+$('sens-table').addEventListener('click', (e) => {
+  const copy = e.target.closest('[data-copy]');
+  if (copy) {
+    const k = copy.dataset.copy;
+    settings.sensByGame[k] = Number(store.fmtSens(store.convertTo(settings, k)));
+    applySettings();
+    updateSettingsReadouts();
+    return;
+  }
+  const row = e.target.closest('tr[data-game]');
+  if (row) switchGame(row.dataset.game);
+});
+
+function switchGame(game) {
+  // 처음 고르는 게임이면 지금 감도와 같은 회전량으로 시작
+  if (!(Number(settings.sensByGame[game]) > 0)) {
+    settings.sensByGame[game] = Number(store.fmtSens(store.convertTo(settings, game)));
+  }
+  settings.sensGame = game;
+  setGame.value = game;
+  $('set-sens').value = store.fmtSens(store.getSens(settings));
+  applySettings();
+  updateSettingsReadouts();
+}
+
+$('apply-fov').onclick = () => {
+  const f = store.SENS_PRESETS[settings.sensGame].fov;
+  if (f) {
+    settings.fov = f;
+    applySettings();
+    updateSettingsReadouts();
+  }
+};
+
+function readSettings(e) {
+  const id = e && e.target && e.target.id;
+  if (id === 'set-game') {
+    switchGame(setGame.value);
+    return;
+  }
+  if (id === 'set-sens') {
+    const v = parseFloat($('set-sens').value);
+    if (v > 0) settings.sensByGame[settings.sensGame] = v;
+  }
+  if (id === 'set-dpi') {
+    const dpi = parseInt($('set-dpi').value, 10);
+    if (dpi >= 50) settings.dpi = dpi;
+  }
   settings.fov = Number($('set-fov').value);
   settings.balloonColor = $('set-color').value;
   settings.volume = Number($('set-vol').value) / 100;
@@ -383,9 +447,71 @@ function readSettings() {
     dot: $('ch-dot').checked,
     outline: $('ch-outline').checked,
   });
-  updateSettingsReadouts();
   applySettings();
+  updateSettingsReadouts();
 }
+
+// ───────────────────────── 추가 발사 키 지정
+let capturing = false;
+const MOUSE_NAMES = { 1: '휠 클릭', 2: '우클릭', 3: '마우스 4 (뒤로)', 4: '마우스 5 (앞으로)' };
+function bindLabel(b) {
+  if (!b) return '';
+  if (b.type === 'mouse') return MOUSE_NAMES[b.button] || `마우스 ${b.button + 1}`;
+  const c = b.code;
+  const map = { Space: 'Space', ShiftLeft: '왼쪽 Shift', ShiftRight: '오른쪽 Shift', ControlLeft: '왼쪽 Ctrl', ControlRight: '오른쪽 Ctrl', AltLeft: '왼쪽 Alt', AltRight: '오른쪽 Alt', CapsLock: 'Caps Lock', Tab: 'Tab', Enter: 'Enter', Backquote: '`' };
+  if (map[c]) return map[c];
+  return c.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Numpad/, 'Num ');
+}
+function setCapturing(v) {
+  capturing = v;
+  game.captureKey = v;
+  updateSettingsReadouts();
+}
+$('fire-key-btn').onclick = (e) => {
+  e.stopPropagation();
+  setCapturing(!capturing);
+};
+$('fire-key-clear').onclick = () => {
+  settings.fireKey = null;
+  applySettings();
+  updateSettingsReadouts();
+};
+document.addEventListener(
+  'keydown',
+  (e) => {
+    if (!capturing) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.code === 'Escape') return setCapturing(false);
+    if (e.code === 'KeyR') {
+      $('fire-key-btn').textContent = 'R은 재시작 키라서 쓸 수 없어요';
+      return;
+    }
+    settings.fireKey = { type: 'key', code: e.code };
+    applySettings();
+    setCapturing(false);
+  },
+  true
+);
+document.addEventListener(
+  'mousedown',
+  (e) => {
+    if (!capturing || e.button === 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    settings.fireKey = { type: 'mouse', button: e.button };
+    applySettings();
+    setCapturing(false);
+  },
+  true
+);
+// 마우스 옆 버튼이 브라우저 '뒤로 가기'를 실행하지 않도록
+document.addEventListener('mouseup', (e) => {
+  if ((e.button === 3 || e.button === 4) && (capturing || document.pointerLockElement)) e.preventDefault();
+});
+document.addEventListener('contextmenu', (e) => {
+  if (capturing) e.preventDefault();
+});
 
 $('settings').addEventListener('input', readSettings);
 $('settings').addEventListener('change', readSettings);
@@ -395,6 +521,7 @@ function openSettings() {
   show('settings');
 }
 function closeSettings() {
+  if (capturing) setCapturing(false);
   hide('settings');
   renderMenu();
 }

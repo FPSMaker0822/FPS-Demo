@@ -12,6 +12,66 @@ export const DIFFICULTY = {
   hard: { label: '어려움', size: 0.72, speed: 1.3, life: 0.75 },
 };
 
+/** 다른 타겟과 최소 각도만큼 떨어진 랜덤 방향 */
+function pickDir(g, yawR, pitchR, minSep, exclude = []) {
+  let p, tries = 0;
+  const others = [...g.targets.map((b) => b.data.dir).filter(Boolean), ...exclude];
+  do {
+    p = { yaw: rand(-yawR, yawR), pitch: rand(pitchR[0], pitchR[1]) };
+    tries++;
+  } while (tries < 30 && others.some((o) => angDist(o, p) < minSep));
+  return p;
+}
+
+/** 박스 안에서 부드럽게 방향을 바꾸며 떠다니는 움직임 */
+const BOX = { x: 7.5, y0: 1.6, y1: 6.8 };
+function wander(b, dt, maxV, box = BOX) {
+  const d = b.data;
+  if (d.vx === undefined) Object.assign(d, { vx: 0, vy: 0, tvx: 0, tvy: 0, turn: 0 });
+  d.turn -= dt;
+  if (d.turn <= 0) {
+    d.turn = rand(0.35, 1.1);
+    let v = rand(-1, 1);
+    if (Math.abs(v) < 0.35) v = Math.sign(v || 1) * 0.35;
+    d.tvx = v * maxV;
+    d.tvy = rand(-0.6, 0.6) * maxV * 0.5;
+  }
+  const k = Math.min(1, dt * 6);
+  d.vx += (d.tvx - d.vx) * k;
+  d.vy += (d.tvy - d.vy) * k;
+  const p = b.position;
+  p.x += d.vx * dt;
+  p.y += d.vy * dt;
+  if (p.x < -box.x || p.x > box.x) {
+    p.x = clamp(p.x, -box.x, box.x);
+    d.vx *= -1;
+    d.tvx *= -1;
+  }
+  if (p.y < box.y0 || p.y > box.y1) {
+    p.y = clamp(p.y, box.y0, box.y1);
+    d.vy *= -1;
+    d.tvy *= -1;
+  }
+}
+
+/** 트래킹 공통: 맞히는 동안 부풀다가 터짐 */
+function trackDamage(g, b, dt, hpTime) {
+  g.addScore(10);
+  b.data.lit = 0.1;
+  b.data.hp -= dt / hpTime;
+  b.inflate = 1 + (1 - b.data.hp) * 0.35;
+  if (b.data.hp <= 0) {
+    g.stats.pops++;
+    g.pop(b, 150);
+    return true;
+  }
+  return false;
+}
+function trackGlow(b, dt) {
+  b.data.lit = Math.max(0, (b.data.lit || 0) - dt);
+  b.material.emissiveIntensity = b.data.lit > 0 ? 0.55 : 0.1;
+}
+
 // ─────────────────────────────────────────────── 풍선 플릭
 class Flick {
   constructor(g) {
@@ -22,10 +82,7 @@ class Flick {
     this.spawn();
   }
   spawn() {
-    let p;
-    do {
-      p = { yaw: rand(-34, 34), pitch: rand(-8, 22) };
-    } while (angDist(p, this.last) < 14);
+    const p = pickDir(this.g, 34, [0, 22], 14, [this.last]);
     this.last = p;
     this.g.spawn({ position: this.g.dirPos(p.yaw, p.pitch, 18), radius: 0.55 * this.g.diff.size });
   }
@@ -34,8 +91,7 @@ class Flick {
     const g = this.g;
     const kt = g.time - hit.spawnAt;
     g.stats.killTimes.push(kt);
-    const bonus = Math.round(100 * clamp((1.2 - kt) / 0.9, 0, 1));
-    g.pop(hit, 100 + bonus);
+    g.pop(hit, 100 + Math.round(100 * clamp((1.2 - kt) / 0.9, 0, 1)));
     this.spawn();
   }
 }
@@ -51,7 +107,7 @@ class Grid {
   cellPos(i) {
     const c = i % this.N, r = Math.floor(i / this.N);
     const half = (this.N - 1) / 2;
-    return new THREE.Vector3((c - half) * this.spacing, 4 + (r - half) * this.spacing, -14);
+    return new THREE.Vector3((c - half) * this.spacing, 5.4 + (r - half) * this.spacing, -14);
   }
   start() {
     this.lastKill = this.g.time;
@@ -76,11 +132,68 @@ class Grid {
   }
 }
 
+// ─────────────────────────────────────────────── 식스 풍선 (작은 풍선 6개 동시)
+class Six {
+  constructor(g) {
+    this.g = g;
+    this.lastKill = 0;
+  }
+  start() {
+    this.lastKill = this.g.time;
+    for (let i = 0; i < 6; i++) this.spawn();
+  }
+  spawn() {
+    const g = this.g;
+    const p = pickDir(g, 22, [1, 16], 6);
+    const b = g.spawn({ position: g.dirPos(p.yaw, p.pitch, 15), radius: 0.36 * g.diff.size });
+    b.data.dir = p;
+  }
+  onShoot(hit) {
+    if (!hit) return;
+    const g = this.g;
+    g.stats.killTimes.push(g.time - this.lastKill);
+    this.lastKill = g.time;
+    g.pop(hit, 100 + Math.min(g.stats.streak, 10) * 6);
+    this.spawn();
+  }
+}
+
+// ─────────────────────────────────────────────── 센터 리턴 플릭 (중앙 ↔ 바깥 반복)
+class Spider {
+  constructor(g) {
+    this.g = g;
+    this.toCenter = true;
+  }
+  start() {
+    this.spawn();
+  }
+  spawn() {
+    const g = this.g;
+    let dir;
+    if (this.toCenter) dir = { yaw: 0, pitch: 6 };
+    else {
+      const a = Math.random() * Math.PI * 2;
+      const d = rand(12, 32);
+      dir = { yaw: Math.cos(a) * d, pitch: clamp(6 + Math.sin(a) * d * 0.6, 0, 22) };
+    }
+    g.spawn({ position: g.dirPos(dir.yaw, dir.pitch, 16), radius: 0.5 * g.diff.size });
+  }
+  onShoot(hit) {
+    if (!hit) return;
+    const g = this.g;
+    const kt = g.time - hit.spawnAt;
+    g.stats.killTimes.push(kt);
+    g.pop(hit, 100 + Math.round(100 * clamp((1.0 - kt) / 0.7, 0, 1)));
+    this.toCenter = !this.toCenter;
+    this.spawn();
+  }
+}
+
 // ─────────────────────────────────────────────── 마이크로 플릭
 class Micro {
   constructor(g) {
     this.g = g;
-    this.last = { yaw: 0, pitch: 6 };
+    this.last = { yaw: 0, pitch: 7 };
   }
   start() {
     this.spawn();
@@ -90,9 +203,9 @@ class Micro {
     const d = rand(2.5, 7.5);
     this.last = {
       yaw: clamp(this.last.yaw + Math.cos(a) * d, -20, 20),
-      pitch: clamp(this.last.pitch + Math.sin(a) * d, -4, 16),
+      pitch: clamp(this.last.pitch + Math.sin(a) * d, 0, 16),
     };
-    this.g.spawn({ position: this.g.dirPos(this.last.yaw, this.last.pitch, 16), radius: 0.28 * this.g.diff.size, string: false });
+    this.g.spawn({ position: this.g.dirPos(this.last.yaw, this.last.pitch, 16), radius: 0.28 * this.g.diff.size });
   }
   onShoot(hit) {
     if (!hit) return;
@@ -100,6 +213,32 @@ class Micro {
     const kt = g.time - hit.spawnAt;
     g.stats.killTimes.push(kt);
     g.pop(hit, 100 + Math.round(100 * clamp((0.85 - kt) / 0.6, 0, 1)));
+    this.spawn();
+  }
+}
+
+// ─────────────────────────────────────────────── 무빙 풍선 (움직이는 타겟 클릭)
+class Motion {
+  constructor(g) {
+    this.g = g;
+    this.lastKill = 0;
+  }
+  start() {
+    this.lastKill = this.g.time;
+    for (let i = 0; i < 3; i++) this.spawn();
+  }
+  spawn() {
+    this.g.spawn({ position: new THREE.Vector3(rand(-6, 6), rand(2, 6), rand(-17, -14)), radius: 0.5 * this.g.diff.size });
+  }
+  update(dt) {
+    for (const b of this.g.targets) wander(b, dt, 4.2 * this.g.diff.speed);
+  }
+  onShoot(hit) {
+    if (!hit) return;
+    const g = this.g;
+    g.stats.killTimes.push(g.time - this.lastKill);
+    this.lastKill = g.time;
+    g.pop(hit, 100 + Math.min(g.stats.streak, 10) * 6);
     this.spawn();
   }
 }
@@ -115,62 +254,96 @@ class Tracking {
   }
   spawn() {
     const g = this.g;
-    this.b = g.spawn({
-      position: new THREE.Vector3(rand(-5, 5), rand(2, 5.5), -15),
-      radius: 0.7 * g.diff.size,
-      unique: true,
-    });
+    this.b = g.spawn({ position: new THREE.Vector3(rand(-5, 5), rand(2.4, 5.5), -15), radius: 0.7 * g.diff.size, unique: true });
     this.b.data.hp = 1;
-    this.b.data.lit = 0;
-    this.vx = 0;
-    this.vy = 0;
-    this.tvx = 0;
-    this.tvy = 0;
-    this.changeIn = 0;
   }
   update(dt) {
     const b = this.b;
     if (!b || b.dead) return;
-    const maxV = 5.5 * this.g.diff.speed;
-    this.changeIn -= dt;
-    if (this.changeIn <= 0) {
-      this.changeIn = rand(0.35, 1.1);
-      let v = rand(-1, 1);
-      if (Math.abs(v) < 0.35) v = Math.sign(v || 1) * 0.35;
-      this.tvx = v * maxV;
-      this.tvy = rand(-0.6, 0.6) * maxV * 0.5;
-    }
-    const k = Math.min(1, dt * 6);
-    this.vx += (this.tvx - this.vx) * k;
-    this.vy += (this.tvy - this.vy) * k;
-    const p = b.position;
-    p.x += this.vx * dt;
-    p.y += this.vy * dt;
-    if (p.x < -7.5 || p.x > 7.5) {
-      p.x = clamp(p.x, -7.5, 7.5);
-      this.vx *= -1;
-      this.tvx *= -1;
-    }
-    if (p.y < 1.4 || p.y > 6.8) {
-      p.y = clamp(p.y, 1.4, 6.8);
-      this.vy *= -1;
-      this.tvy *= -1;
-    }
-    b.data.lit = Math.max(0, b.data.lit - dt);
-    b.material.emissiveIntensity = b.data.lit > 0 ? 0.55 : 0.1;
+    wander(b, dt, 5.5 * this.g.diff.speed);
+    trackGlow(b, dt);
   }
   onTick(hit, dt) {
+    if (hit && hit === this.b && trackDamage(this.g, hit, dt, 1.4)) this.spawn();
+  }
+}
+
+// ─────────────────────────────────────────────── 스트레이프 트래킹 (좌우 무빙)
+class Strafe {
+  constructor(g) {
+    this.g = g;
+    this.b = null;
+  }
+  start() {
+    this.spawn();
+  }
+  spawn() {
     const g = this.g;
-    if (!hit || hit !== this.b) return;
-    g.addScore(10);
-    hit.data.lit = 0.1;
-    hit.data.hp -= dt / 1.4;
-    hit.inflate = 1 + (1 - hit.data.hp) * 0.35;
-    if (hit.data.hp <= 0) {
-      g.stats.pops++;
-      g.pop(hit, 150);
-      this.spawn();
+    this.b = g.spawn({ position: new THREE.Vector3(rand(-4, 4), 2.6, -13), radius: 0.62 * g.diff.size, unique: true });
+    this.b.data.hp = 1;
+    this.dir = Math.random() < 0.5 ? -1 : 1;
+    this.v = 0;
+    this.switchIn = rand(0.25, 0.9);
+    this.stopFor = 0;
+    this.jumpV = 0;
+  }
+  update(dt) {
+    const b = this.b;
+    if (!b || b.dead) return;
+    const maxV = 6.5 * this.g.diff.speed;
+    this.switchIn -= dt;
+    if (this.stopFor > 0) this.stopFor -= dt;
+    if (this.switchIn <= 0) {
+      this.switchIn = rand(0.22, 0.95);
+      const r = Math.random();
+      if (r < 0.15) this.stopFor = rand(0.12, 0.3); // 잠깐 멈춤
+      else if (r < 0.25 && b.position.y <= 2.61) this.jumpV = 4.5; // 점프
+      else this.dir *= -1; // 방향 전환 (AD 스트레이프)
     }
+    const target = this.stopFor > 0 ? 0 : this.dir * maxV;
+    this.v += (target - this.v) * Math.min(1, dt * 14);
+    const p = b.position;
+    p.x += this.v * dt;
+    if (Math.abs(p.x) > 7) {
+      p.x = clamp(p.x, -7, 7);
+      this.dir = -Math.sign(p.x);
+    }
+    if (this.jumpV !== 0 || p.y > 2.6) {
+      this.jumpV -= 12 * dt;
+      p.y += this.jumpV * dt;
+      if (p.y <= 2.6) {
+        p.y = 2.6;
+        this.jumpV = 0;
+      }
+    }
+    trackGlow(b, dt);
+  }
+  onTick(hit, dt) {
+    if (hit && hit === this.b && trackDamage(this.g, hit, dt, 1.4)) this.spawn();
+  }
+}
+
+// ─────────────────────────────────────────────── 타겟 스위칭 (여러 개를 추적하며 전환)
+class Switching {
+  constructor(g) {
+    this.g = g;
+  }
+  start() {
+    for (let i = 0; i < 3; i++) this.spawn();
+  }
+  spawn() {
+    const g = this.g;
+    const b = g.spawn({ position: new THREE.Vector3(rand(-7, 7), rand(2, 6.5), rand(-17, -12)), radius: 0.55 * g.diff.size, unique: true });
+    b.data.hp = 1;
+  }
+  update(dt) {
+    for (const b of this.g.targets) {
+      wander(b, dt, 4.5 * this.g.diff.speed);
+      trackGlow(b, dt);
+    }
+  }
+  onTick(hit, dt) {
+    if (hit && trackDamage(this.g, hit, dt, 0.6)) this.spawn();
   }
 }
 
@@ -206,7 +379,7 @@ class Reaction {
     this.phase = 'show';
     const g = this.g;
     g.hud.message('');
-    this.b = g.spawn({ position: g.dirPos(rand(-9, 9), rand(-3, 8), 15), radius: 0.6 * g.diff.size });
+    g.spawn({ position: g.dirPos(rand(-9, 9), rand(0, 9), 15), radius: 0.6 * g.diff.size });
     this.shownAt = performance.now();
   }
   onShoot(hit) {
@@ -223,8 +396,7 @@ class Reaction {
     if (!hit) return;
     const ms = performance.now() - this.shownAt;
     g.stats.reactionTimes.push(ms);
-    const pts = 50 + Math.max(0, Math.round((700 - ms) * 1.5));
-    g.pop(hit, pts, `${Math.round(ms)}ms`);
+    g.pop(hit, 50 + Math.max(0, Math.round((700 - ms) * 1.5)), `${Math.round(ms)}ms`);
     this.round++;
     if (this.round >= this.rounds) {
       this.phase = 'done';
@@ -252,13 +424,9 @@ class Precision {
   }
   spawn() {
     const g = this.g;
-    let p, tries = 0;
-    do {
-      p = { yaw: rand(-20, 20), pitch: rand(-3, 12) };
-      tries++;
-    } while (tries < 20 && g.targets.some((b) => angDist(b.data.dir, p) < 8));
+    const p = pickDir(g, 20, [1, 12], 8);
     const r0 = 0.5 * g.diff.size;
-    const b = g.spawn({ position: g.dirPos(p.yaw, p.pitch, 26), radius: r0, string: false });
+    const b = g.spawn({ position: g.dirPos(p.yaw, p.pitch, 26), radius: r0 });
     b.data.dir = p;
     b.data.r0 = r0;
     b.data.life = 2.2 * g.diff.life;
@@ -297,7 +465,8 @@ class Rise {
   spawn() {
     const g = this.g;
     const x0 = rand(-9, 9);
-    const b = g.spawn({ position: new THREE.Vector3(x0, -1.2, rand(-19, -12)), radius: 0.6 * g.diff.size });
+    const r = 0.6 * g.diff.size;
+    const b = g.spawn({ position: new THREE.Vector3(x0, r * 1.2 + 0.4, rand(-19, -12)), radius: r });
     b.data.x0 = x0;
     b.data.speed = (1.5 + Math.random() * 0.8 + g.time * 0.02) * g.diff.speed;
     b.data.wf = rand(0.8, 1.6);
@@ -319,31 +488,55 @@ class Rise {
     if (!hit) return;
     const g = this.g;
     g.stats.killTimes.push(g.time - hit.spawnAt);
-    const low = clamp(1 - hit.position.y / 11, 0, 1);
-    g.pop(hit, 100 + Math.round(60 * low));
+    g.pop(hit, 100 + Math.round(60 * clamp(1 - hit.position.y / 11, 0, 1)));
   }
 }
 
 export const SCENARIOS = {
-  flick: {
-    name: '풍선 플릭', icon: '🎈', tag: '플릭', metric: 'kill', mode: 'timed',
-    desc: '넓은 범위에 하나씩 나타나는 풍선을 빠르게 플릭해서 터트리세요. 빠를수록 보너스.',
-    create: (g) => new Flick(g),
-  },
   grid: {
     name: '풍선 그리드', icon: '🟦', tag: '플릭 · 속도', metric: 'kill', mode: 'timed',
     desc: '5×5 격자 위 3개의 풍선. 하나를 터트리면 다른 칸에 새로 생깁니다. 연속 명중 보너스.',
     create: (g) => new Grid(g),
   },
+  six: {
+    name: '식스 풍선', icon: '🎲', tag: '정적 클릭 · 정밀', metric: 'kill', mode: 'timed',
+    desc: '작은 풍선 6개가 동시에 떠 있습니다. 정확하게 하나씩, 효율적인 순서로 터트리세요.',
+    create: (g) => new Six(g),
+  },
+  spider: {
+    name: '센터 리턴 플릭', icon: '🕸️', tag: '플릭', metric: 'kill', mode: 'timed',
+    desc: '중앙 풍선과 바깥 풍선이 번갈아 나옵니다. 크게 플릭하고 다시 중앙으로 돌아오는 연습.',
+    create: (g) => new Spider(g),
+  },
   micro: {
-    name: '마이크로 플릭', icon: '🎯', tag: '정밀 · 미세조정', metric: 'kill', mode: 'timed',
+    name: '마이크로 플릭', icon: '🎯', tag: '미세 조정', metric: 'kill', mode: 'timed',
     desc: '작은 풍선이 직전 위치 근처에 생깁니다. 손목의 미세 조정을 연습하세요.',
     create: (g) => new Micro(g),
   },
+  flick: {
+    name: '풍선 플릭', icon: '🎈', tag: '플릭', metric: 'kill', mode: 'timed',
+    desc: '넓은 범위에 하나씩 나타나는 풍선을 빠르게 플릭해서 터트리세요. 빠를수록 보너스.',
+    create: (g) => new Flick(g),
+  },
+  motion: {
+    name: '무빙 풍선', icon: '💨', tag: '동적 클릭', metric: 'kill', mode: 'timed',
+    desc: '이리저리 움직이는 풍선 3개를 클릭으로 터트리세요. 움직임을 읽고 쏘는 연습.',
+    create: (g) => new Motion(g),
+  },
+  strafe: {
+    name: '스트레이프 트래킹', icon: '↔️', tag: '반응 트래킹', metric: 'track', mode: 'timed', hold: true,
+    desc: '좌우로 무빙(AD 스트레이프)하고 가끔 멈추거나 점프하는 풍선을 꾹 눌러 추적하세요.',
+    create: (g) => new Strafe(g),
+  },
   tracking: {
-    name: '풍선 트래킹', icon: '🌀', tag: '트래킹', metric: 'track', mode: 'timed', hold: true,
-    desc: '좌클릭을 꾹 누른 채 움직이는 풍선을 따라가세요. 계속 맞히면 부풀어 오르다 터집니다.',
+    name: '풍선 트래킹', icon: '🌀', tag: '부드러운 트래킹', metric: 'track', mode: 'timed', hold: true,
+    desc: '꾹 누른 채 부드럽게 움직이는 풍선을 따라가세요. 계속 맞히면 부풀어 오르다 터집니다.',
     create: (g) => new Tracking(g),
+  },
+  switching: {
+    name: '타겟 스위칭', icon: '🔀', tag: '타겟 전환', metric: 'track', mode: 'timed', hold: true,
+    desc: '움직이는 풍선 3개. 하나를 추적해서 터트리면 바로 다음 풍선으로 전환하세요.',
+    create: (g) => new Switching(g),
   },
   reaction: {
     name: '반응속도', icon: '⚡', tag: '반응', metric: 'reaction', mode: 'rounds',
@@ -351,7 +544,7 @@ export const SCENARIOS = {
     create: (g) => new Reaction(g),
   },
   precision: {
-    name: '정밀 사격', icon: '🔭', tag: '정밀 · 원거리', metric: 'kill', mode: 'timed',
+    name: '정밀 사격', icon: '🔭', tag: '원거리 정밀', metric: 'kill', mode: 'timed',
     desc: '멀리 있는 풍선이 점점 작아지다 사라집니다. 사라지기 전에 정확하게.',
     create: (g) => new Precision(g),
   },
@@ -362,21 +555,27 @@ export const SCENARIOS = {
   },
 };
 
+// 인기 에임 트레이닝 루틴 구성을 참고한 루틴 (과제는 이 게임의 풍선 버전)
 export const ROUTINES = [
   {
-    id: 'warmup', name: '데일리 워밍업', icon: '☀️',
-    desc: '플릭 → 그리드 → 트래킹 → 마이크로. 게임 전 균형 잡힌 3분 워밍업.',
-    steps: [['flick', 45], ['grid', 45], ['tracking', 45], ['micro', 45]],
+    id: 'popular5', name: '인기 워밍업 5종', icon: '🔥',
+    desc: '에임 트레이너에서 가장 많이 추천되는 조합(그리드 → 식스 → 센터 리턴 → 마이크로 → 스트레이프 트래킹)을 풍선 버전으로.',
+    steps: [['grid', 60], ['six', 60], ['spider', 60], ['micro', 60], ['strafe', 60]],
   },
   {
-    id: 'flickfocus', name: '플릭 집중', icon: '💥',
-    desc: '큰 동작에서 미세 조정까지, 플릭을 단계적으로 다듬는 루틴.',
-    steps: [['grid', 40], ['flick', 40], ['micro', 40], ['precision', 40]],
+    id: 'quick', name: '랭크 전 3분 워밍업', icon: '⏱️',
+    desc: '발로란트 랭크 전 워밍업으로 자주 쓰이는 그리드 · 마이크로 · 스트레이프 트래킹 3종 압축판.',
+    steps: [['grid', 60], ['micro', 60], ['strafe', 60]],
   },
   {
-    id: 'reflex', name: '반응 & 추적', icon: '🧠',
-    desc: '반응속도 10라운드 후 트래킹과 타겟 전환으로 마무리.',
-    steps: [['reaction', 0], ['tracking', 60], ['rise', 60]],
+    id: 'basics', name: '에임 베이직', icon: '🎯',
+    desc: '미세 조정과 플릭을 중심으로 한 기본기 루틴. 작은 동작에서 큰 동작, 원거리 정밀까지.',
+    steps: [['micro', 60], ['spider', 60], ['flick', 60], ['precision', 60]],
+  },
+  {
+    id: 'balanced', name: '밸런스 벤치마크', icon: '📊',
+    desc: '벤치마크식 3대 분류(클릭 · 트래킹 · 타겟 전환)를 골고루. 약점 파악용.',
+    steps: [['six', 60], ['motion', 60], ['tracking', 60], ['strafe', 60], ['switching', 60]],
   },
 ];
 
