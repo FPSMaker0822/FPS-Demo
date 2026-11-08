@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>POPSHOT · 에임 트레이너</title>
-  <meta name="description" content="휴먼 봇 · 구체 · 풍선 타겟으로 플릭, 트래킹, 반응속도를 연습하는 웹 FPS 에임 트레이너" />
+  <meta name="description" content="구체 · 풍선 · 움직이는 사람 표적으로 플릭, 트래킹, 반응속도를 연습하는 웹 FPS 에임 트레이너" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='11' fill='none' stroke='%232ef2b0' stroke-width='3'/><circle cx='16' cy='16' r='3' fill='%232ef2b0'/></svg>" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
   <link rel="stylesheet" href="css/style.css" />
@@ -74,7 +74,7 @@
             <h1>오늘도 한 판, <span class="grad">에임 워밍업</span></h1>
           </div>
           <div class="controls">
-            <div class="ctrl"><span>타겟</span><div class="seg" id="seg-kind"><button data-v="bot">휴먼 봇</button><button data-v="orb">구체</button><button data-v="balloon">풍선</button></div></div>
+            <div class="ctrl"><span>타겟</span><div class="seg" id="seg-kind"><button data-v="orb">구체</button><button data-v="balloon">풍선</button></div></div>
             <div class="ctrl"><span>시간</span><div class="seg" id="seg-duration"><button data-v="30">30s</button><button data-v="60">60s</button><button data-v="90">90s</button></div></div>
             <div class="ctrl"><span>난이도</span><div class="seg" id="seg-diff"><button data-v="easy">쉬움</button><button data-v="normal">보통</button><button data-v="hard">어려움</button></div></div>
           </div>
@@ -218,8 +218,11 @@
       </div>
 
       <div class="tab-body hidden" data-tab="target">
-        <div class="group-title">타겟 종류</div>
+        <div class="group-title">클릭 모드 타겟</div>
         <div class="kind-grid" id="kind-grid"></div>
+        <div class="group-title" style="margin-top:18px">트래킹 모드 타겟</div>
+        <div class="kind-grid" id="track-grid"></div>
+        <p class="hint" style="margin-top:8px">사람 표적은 스트레이프 · 스무스 트래킹 · 타겟 스위칭에서만 나오며, 처치하면 터지지 않고 조용히 사라집니다.</p>
         <div class="group-title" style="margin-top:18px">타겟 색상</div>
         <div class="swatches" id="color-swatches"></div>
       </div>

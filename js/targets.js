@@ -4,7 +4,7 @@ import * as THREE from '../vendor/three.module.min.js';
 export const PALETTE = ['#ff4d6d', '#ffb703', '#4cc9f0', '#80ed99', '#c77dff', '#ff8fab', '#f77f00', '#3a86ff'];
 
 export const TARGET_KINDS = {
-  bot: { label: '휴먼 봇', desc: '머리 + 몸통. 헤드샷 보너스', color: '#ff3d5a' },
+  bot: { label: '사람 표적', desc: '트래킹 모드 전용 · 움직이는 사람 표적', color: '#ff7a3d' },
   orb: { label: '구체', desc: '빛나는 공 타겟', color: '#2ef2b0' },
   balloon: { label: '풍선', desc: '알록달록 풍선', color: 'rainbow' },
 };
@@ -163,6 +163,23 @@ export class Target {
 
   setLit(on) {
     if (this.unique) this.material.emissiveIntensity = on ? this.baseEmissive + 0.5 : this.baseEmissive;
+  }
+
+  /** 사람 표적 퇴장: 터지지 않고 조용히 사라짐 */
+  startFade() {
+    this.fading = 0;
+    this.material.transparent = true;
+    for (const m of this.group.children) if (m.material === ACCENT_MAT) m.visible = false;
+    if (this.hpFill) this.hpFill.parent.children.forEach((c) => c.isSprite && (c.visible = false));
+  }
+
+  /** 페이드가 끝나면 true */
+  updateFade(dt) {
+    this.fading += dt;
+    const k = Math.min(1, this.fading / 0.3);
+    this.material.opacity = 1 - k;
+    this.group.scale.setScalar(this.radius * (1 - 0.15 * k));
+    return k >= 1;
   }
 
   update(dt) {

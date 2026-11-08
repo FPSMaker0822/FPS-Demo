@@ -23,6 +23,7 @@ export class Game {
     this.state = 'idle'; // idle | countdown | playing | paused | results
     this.targets = [];
     this.decor = [];
+    this.fading = [];
     this.effects = new Effects(world.scene, world.camera);
     this.yaw = 0;
     this.pitch = 0;
@@ -178,8 +179,10 @@ export class Game {
     this.clearDecor();
     this.hud.clearFloats();
     this.scenarioId = scenarioId;
-    this.kind = this.getSettings().targetKind || 'bot';
     this.def = SCENARIOS[scenarioId];
+    // 사람 표적은 트래킹(꾹 누르기) 모드에서만. 클릭 모드는 구체/풍선
+    const st = this.getSettings();
+    this.kind = this.def.hold && st.humanTracking ? 'bot' : st.targetKind === 'balloon' ? 'balloon' : 'orb';
     this.duration = duration;
     this.difficulty = difficulty;
     this.diff = DIFFICULTY[difficulty] || DIFFICULTY.normal;
@@ -309,8 +312,14 @@ export class Game {
     }
     const pos = b.position.clone();
     if (b.kind === 'bot') {
-      this.effects.burst(pos.clone().setY(pos.y + b.radius * 0.6), b.color, b.radius, { count: 46, ring: false, height: b.radius * 2.4 });
-      this.sfx.kill(head);
+      // 사람 표적은 터지지 않고 조용히 사라짐
+      this.sfx.beep(990, 0.1, 0.14);
+      this.sfx.beep(1480, 0.12, 0.12, 0.06);
+      this.targets = this.targets.filter((t) => t !== b);
+      b.startFade();
+      this.fading.push(b);
+      this.addScore(points, pos.setY(pos.y + b.topOffset() * 0.7), text);
+      return;
     } else {
       this.effects.burst(pos, b.color, b.hitRadius(), { ring: b.kind === 'balloon' });
       if (b.kind === 'balloon') this.sfx.pop(b.radius);
@@ -385,7 +394,7 @@ export class Game {
   // ───────────────────────── 메뉴 배경 장식 풍선
   initDecor() {
     if (this.decor.length) return;
-    const kind = this.getSettings().targetKind || 'bot';
+    const kind = this.getSettings().targetKind === 'balloon' ? 'balloon' : 'orb';
     this.decorKind = kind;
     const n = kind === 'bot' ? 7 : 14;
     for (let i = 0; i < n; i++) {
@@ -415,6 +424,12 @@ export class Game {
   // ───────────────────────── 매 프레임
   update(dt) {
     this.effects.update(dt);
+    for (let i = this.fading.length - 1; i >= 0; i--) {
+      if (this.fading[i].updateFade(dt)) {
+        this.fading[i].dispose();
+        this.fading.splice(i, 1);
+      }
+    }
 
     if (this.state === 'idle' || this.state === 'results') {
       this.idleT += dt;

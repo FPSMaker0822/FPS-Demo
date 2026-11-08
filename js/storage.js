@@ -24,7 +24,8 @@ export const DEFAULT_SETTINGS = {
   crosshair: { color: '#2ef2b0', length: 6, thickness: 2, gap: 3, dot: false, outline: true },
   volume: 0.6,
   showFps: false,
-  targetKind: 'bot', // bot | orb | balloon
+  targetKind: 'orb', // 클릭 모드 타겟: orb | balloon
+  humanTracking: true, // 트래킹 모드에서 움직이는 사람 표적 사용
   targetColor: 'auto', // auto | rainbow | #hex
   theme: 'midnight',
   duration: 60,
@@ -58,6 +59,7 @@ export function load() {
     settings.sensByGame[settings.sensGame] = raw.settings.sens;
   }
   if (!SENS_PRESETS[settings.sensGame]) settings.sensGame = 'valorant';
+  if (settings.targetKind === 'bot') settings.targetKind = 'orb'; // 사람 표적은 트래킹 전용
   return {
     settings,
     best: raw.best || {},

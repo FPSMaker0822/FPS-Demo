@@ -593,7 +593,20 @@ function kindColor(kind) {
   return c === 'rainbow' ? PALETTE[2] : c;
 }
 function renderKindGrid() {
+  const bc = kindColor('bot');
+  const track = [
+    ['bot', true, '사람 표적', '움직이는 사람 형태'],
+    ['same', false, '클릭 타겟과 동일', `${TARGET_KINDS[settings.targetKind].label} 사용`],
+  ];
+  $('track-grid').innerHTML = track
+    .map(
+      ([k, v, name, desc]) => `<button class="option-card ${settings.humanTracking === v ? 'on' : ''}" data-human="${v}">
+        <div class="option-preview">${k === 'bot' ? KIND_ART.bot(bc) : KIND_ART[settings.targetKind](kindColor(settings.targetKind))}</div>
+        <div class="option-name">${name}</div><div class="option-desc">${desc}</div></button>`
+    )
+    .join('');
   $('kind-grid').innerHTML = Object.entries(TARGET_KINDS)
+    .filter(([k]) => k !== 'bot')
     .map(
       ([k, t]) => `<button class="option-card ${settings.targetKind === k ? 'on' : ''}" data-kind="${k}">
         <div class="option-preview">${KIND_ART[k](kindColor(k))}</div>
@@ -621,6 +634,13 @@ function renderSwatches() {
     return `<button class="swatch ${on}" data-color="${c}" style="background:${c}"></button>`;
   }).join('');
 }
+$('track-grid').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-human]');
+  if (!b) return;
+  settings.humanTracking = b.dataset.human === 'true';
+  applySettings();
+  updateSettingsReadouts();
+});
 $('color-swatches').addEventListener('click', (e) => {
   const b = e.target.closest('[data-color]');
   if (!b) return;
