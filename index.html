@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>POPSHOT · 에임 트레이너</title>
+  <meta name="description" content="풍선을 터트리며 플릭, 트래킹, 반응속도를 연습하는 웹 FPS 에임 트레이너" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎈</text></svg>" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- 인게임 HUD -->
+  <div id="hud" class="hidden">
+    <div class="hud-top">
+      <div class="hud-box hud-left">
+        <div class="hud-label" id="hud-routine"></div>
+        <div class="hud-name" id="hud-name"></div>
+      </div>
+      <div class="hud-box hud-center">
+        <div class="hud-label" id="hud-time-label">남은 시간</div>
+        <div class="hud-time" id="hud-time">60.0</div>
+        <div class="hud-score" id="hud-score">0</div>
+      </div>
+      <div class="hud-box hud-right">
+        <div><span class="hud-label">정확도</span> <b id="hud-acc">—</b></div>
+        <div><span class="hud-label">연속</span> <b id="hud-streak">0</b></div>
+      </div>
+    </div>
+    <canvas id="crosshair"></canvas>
+    <svg id="hitmarker" viewBox="0 0 40 40" aria-hidden="true">
+      <path d="M8 8 L15 15 M32 8 L25 15 M8 32 L15 25 M32 32 L25 25" />
+    </svg>
+    <div id="hud-msg"></div>
+    <div id="float-layer"></div>
+    <div id="fps" class="hidden"></div>
+    <div class="hud-hint">ESC 일시정지 · R 즉시 재시작</div>
+  </div>
+
+  <!-- 메인 메뉴 -->
+  <section id="menu" class="screen">
+    <div class="menu-inner">
+      <header class="brand">
+        <div>
+          <h1 class="logo">POP<span>SHOT</span></h1>
+          <p class="tagline">풍선을 터트리며 다듬는 FPS 에임 연습장</p>
+        </div>
+        <button class="btn ghost" id="btn-settings">⚙ 설정</button>
+      </header>
+
+      <div class="options-row">
+        <div class="opt">
+          <span class="opt-label">시간</span>
+          <div class="seg" id="seg-duration">
+            <button data-v="30">30초</button><button data-v="60">60초</button><button data-v="90">90초</button>
+          </div>
+        </div>
+        <div class="opt">
+          <span class="opt-label">난이도</span>
+          <div class="seg" id="seg-diff">
+            <button data-v="easy">쉬움</button><button data-v="normal">보통</button><button data-v="hard">어려움</button>
+          </div>
+        </div>
+        <button class="sens-chip" id="sens-chip" title="감도 설정 열기"></button>
+      </div>
+
+      <h2 class="section-title">시나리오</h2>
+      <div id="scenario-grid" class="cards"></div>
+
+      <h2 class="section-title">루틴 <small>여러 시나리오를 연속으로</small></h2>
+      <div id="routine-grid" class="cards routines"></div>
+
+      <p class="footnote" id="footnote">좌클릭 사격 · ESC 일시정지 · R 재시작 · 기록은 이 브라우저에 저장됩니다</p>
+      <p class="footnote warn hidden" id="mobile-warn">이 게임은 마우스가 있는 PC 브라우저(Chrome / Edge / Firefox)에서 플레이하세요.</p>
+    </div>
+  </section>
+
+  <!-- 일시정지 -->
+  <section id="pause" class="screen overlay hidden">
+    <div class="panel small">
+      <h2>일시정지</h2>
+      <p class="muted" id="pause-hint">화면을 클릭하거나 계속하기를 누르세요</p>
+      <div class="btns col">
+        <button class="btn primary" id="pause-resume">계속하기</button>
+        <button class="btn" id="pause-restart">다시 시작</button>
+        <button class="btn" id="pause-settings">설정</button>
+        <button class="btn ghost" id="pause-menu">메뉴로</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 결과 -->
+  <section id="results" class="screen overlay hidden">
+    <div class="panel">
+      <div class="res-head">
+        <div>
+          <div class="muted" id="res-meta"></div>
+          <h2 id="res-name"></h2>
+        </div>
+        <span class="badge hidden" id="res-badge">NEW BEST</span>
+      </div>
+      <div class="res-score"><span id="res-score">0</span><small id="res-prev"></small></div>
+      <div class="res-stats" id="res-stats"></div>
+      <div class="spark-wrap">
+        <div class="muted small-label">최근 기록</div>
+        <canvas id="res-spark"></canvas>
+      </div>
+      <div id="res-routine" class="hidden"></div>
+      <div class="btns">
+        <button class="btn primary" id="res-next">다음 단계 ▶</button>
+        <button class="btn primary" id="res-retry">다시 하기</button>
+        <button class="btn ghost" id="res-menu">메뉴</button>
+      </div>
+      <p class="muted kbd-hint">Enter: <span id="res-enter-label">다시 하기</span></p>
+    </div>
+  </section>
+
+  <!-- 설정 -->
+  <div id="settings" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="panel wide">
+      <div class="modal-head">
+        <h2 id="settings-title">설정</h2>
+        <button class="btn ghost icon" id="settings-close" aria-label="닫기">✕</button>
+      </div>
+
+      <div class="settings-grid">
+        <fieldset>
+          <legend>감도</legend>
+          <label>게임 기준
+            <select id="set-game"></select>
+          </label>
+          <label><span id="set-sens-label">인게임 감도</span>
+            <input type="number" id="set-sens" step="0.001" min="0.001" />
+          </label>
+          <label>마우스 DPI
+            <input type="number" id="set-dpi" step="50" min="100" />
+          </label>
+          <div class="readout" id="sens-readout"></div>
+          <p class="hint">평소 쓰는 게임과 감도를 고르면 같은 회전량으로 맞춰집니다. 정확한 변환을 위해 OS의 "포인터 정밀도 향상"은 꺼두세요.</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>화면</legend>
+          <label>수평 시야각 (FOV) <b id="set-fov-v"></b>
+            <input type="range" id="set-fov" min="70" max="120" step="1" />
+          </label>
+          <label>풍선 색상
+            <select id="set-color">
+              <option value="rainbow">무지개</option>
+              <option value="#ff4d6d">빨강</option>
+              <option value="#ffb703">노랑</option>
+              <option value="#4cc9f0">하늘</option>
+              <option value="#80ed99">초록</option>
+              <option value="#c77dff">보라</option>
+            </select>
+          </label>
+          <label>효과음 볼륨 <b id="set-vol-v"></b>
+            <input type="range" id="set-vol" min="0" max="100" step="1" />
+          </label>
+          <label class="check"><input type="checkbox" id="set-fps" /> FPS 표시</label>
+        </fieldset>
+
+        <fieldset>
+          <legend>크로스헤어</legend>
+          <div class="ch-wrap">
+            <div class="ch-preview"><canvas id="ch-preview"></canvas></div>
+            <div class="ch-controls">
+              <label>색상 <input type="color" id="ch-color" /></label>
+              <label>길이 <b id="ch-length-v"></b><input type="range" id="ch-length" min="0" max="20" step="1" /></label>
+              <label>두께 <b id="ch-thickness-v"></b><input type="range" id="ch-thickness" min="1" max="6" step="1" /></label>
+              <label>간격 <b id="ch-gap-v"></b><input type="range" id="ch-gap" min="0" max="14" step="1" /></label>
+              <label class="check"><input type="checkbox" id="ch-dot" /> 중앙 점</label>
+              <label class="check"><input type="checkbox" id="ch-outline" /> 외곽선</label>
+            </div>
+          </div>
+        </fieldset>
+      </div>
+
+      <div class="modal-foot">
+        <button class="btn danger ghost" id="reset-records">기록 초기화</button>
+        <button class="btn primary" id="settings-done">완료</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
