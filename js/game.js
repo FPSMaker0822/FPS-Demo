@@ -202,7 +202,7 @@ export class Game {
     this.stats = {
       shots: 0, hits: 0, misses: 0, score: 0, streak: 0, maxStreak: 0,
       killTimes: [], reactionTimes: [], expired: 0, falseStarts: 0, pops: 0, headshots: 0,
-      flicks: [], misses: [], timeline: [],
+      flicks: [], missVecs: [], timeline: [], // 분석용 기록 (misses는 빗나간 횟수)
     };
     this.flickOrigin = { yaw: 0, pitch: 0 };
     this.lastHitTime = 0;
@@ -278,7 +278,7 @@ export class Game {
       pops: s.pops,
       kind: this.kind,
       seed: this.seed,
-      raw: { flicks: s.flicks, misses: s.misses, timeline: s.timeline },
+      raw: { flicks: s.flicks, misses: s.missVecs, timeline: s.timeline },
       headshotRate: this.kind === 'bot' && !this.def.hold && s.hits ? s.headshots / s.hits : null,
       date: Date.now(),
     };
@@ -435,7 +435,7 @@ export class Game {
     const len = Math.hypot(v.x, v.y);
     if (len < 1) return;
     const ux = v.x / len, uy = v.y / len;
-    if (s.misses.length < 600) s.misses.push({ along: best.off.x * ux + best.off.y * uy, perp: -best.off.x * uy + best.off.y * ux });
+    if (s.missVecs.length < 600) s.missVecs.push({ along: best.off.x * ux + best.off.y * uy, perp: -best.off.x * uy + best.off.y * ux });
   }
 
   shoot() {

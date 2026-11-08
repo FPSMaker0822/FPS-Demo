@@ -98,3 +98,9 @@ test('analyzeRun detects tracking fatigue', () => {
   const timeline = [0.9, 0.9, 0.85, 0.6, 0.55, 0.5].map((v) => ({ hit: v * 100, total: 100 }));
   assert.ok(analyzeRun({ timeline }).insights.some((i) => i.key === 'fatigue'));
 });
+
+test('analyzeRun never throws on malformed input', () => {
+  for (const bad of [undefined, null, {}, { misses: NaN }, { flicks: 3, misses: 'x', timeline: {} }]) {
+    assert.doesNotThrow(() => analyzeRun(bad ?? undefined));
+  }
+});

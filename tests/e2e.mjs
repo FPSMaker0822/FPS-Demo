@@ -146,6 +146,39 @@ await step('every built-in scenario runs and produces results', async () => {
   await page.close();
 });
 
+// 2-1) 빗나간 샷이 섞인 판도 결과/분석이 정상 (실제 오류 재현: misses 이름 충돌)
+await step('runs with missed shots finish without errors and show analysis', async () => {
+  const page = await newPage(seeded);
+  await page.evaluate(() => {
+    document.getElementById('menu').classList.add('hidden');
+    window.popshot.game.begin('spider', { duration: 30 });
+    window.popshot.game.requestLock();
+  });
+  await page.waitForTimeout(50);
+  await skipCountdown(page);
+  await page.waitForFunction(() => window.popshot.game.targets.length > 0);
+  for (let i = 0; i < 8; i++) {
+    await aimAndFire(page);
+    await page.waitForTimeout(40);
+    // 타겟 옆을 쏴서 빗나가게
+    await page.evaluate(() => {
+      const g = window.popshot.game;
+      g.yaw += 0.03;
+      g.applyCamera();
+      document.dispatchEvent(new MouseEvent('mousedown', { button: 0 }));
+      document.dispatchEvent(new MouseEvent('mouseup', { button: 0 }));
+    });
+    await page.waitForTimeout(40);
+  }
+  const misses = await page.evaluate(() => window.popshot.game.stats.misses);
+  assert.ok(misses >= 4, `expected misses, got ${misses}`);
+  await endRun(page);
+  await page.waitForSelector('#results:not(.hidden)');
+  assert.equal(await page.evaluate(() => localStorage.getItem('popshot.errors')), null);
+  assert.ok(await page.isVisible('#res-analysis'));
+  await page.close();
+});
+
 // 3) 벤치마크: 같은 시드면 같은 배치
 await step('benchmark uses a fixed seed and assigns a tier', async () => {
   const page = await newPage(seeded);

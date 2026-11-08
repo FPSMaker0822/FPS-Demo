@@ -72,7 +72,10 @@ const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
  * misses: [{ along, perp, r }] 빗나간 지점: 플릭 방향 성분(+면 지나침), 수직 성분, 타겟 각반경
  * timeline: [{ hit, total }] 5초 구간별 트래킹 판정
  */
-export function analyzeRun({ flicks = [], misses = [], timeline = [] } = {}) {
+export function analyzeRun(raw = {}) {
+  // 잘못된 입력이 와도 결과 화면이 깨지지 않도록 배열만 받음
+  const arr = (v) => (Array.isArray(v) ? v : []);
+  const flicks = arr(raw.flicks), misses = arr(raw.misses), timeline = arr(raw.timeline);
   const out = { insights: [] };
 
   if (flicks.length >= 5) {

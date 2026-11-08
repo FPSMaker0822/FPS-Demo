@@ -1,5 +1,5 @@
 // 오프라인 지원: 앱 파일을 캐시. 새 버전 배포 시 VERSION을 올리면 캐시가 갱신됨
-const VERSION = 'popshot-v7';
+const VERSION = 'popshot-v8';
 const CORE = [
   './', 'index.html', 'css/style.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png',
   'js/main.js', 'js/game.js', 'js/world.js', 'js/targets.js', 'js/scenarios.js', 'js/hud.js', 'js/audio.js',
