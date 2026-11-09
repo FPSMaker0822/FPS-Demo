@@ -128,8 +128,13 @@ Netlify, Vercel, Cloudflare Pages 등 정적 호스팅 어디에 올려도 동�
 
 참고
 
-- 포함된 `web.config`가 IIS 기본 MIME 목록에 없는 `.webmanifest`를 등록하고, `index.html`/`sw.js`는 캐시하지 않도록 설정합니다.
-  서버 정책상 `web.config`의 `mimeMap` 재정의가 막혀 있다면 IIS 관리자 → MIME 형식에서 `.webmanifest` → `application/manifest+json`을 추가하세요.
+- 포함된 `web.config`는 **선택 사항**입니다 (없어도 게임은 동작). `.webmanifest` MIME 등록과 `index.html`/`sw.js` 캐시 끄기만 합니다.
+  `web.config`가 hiddenSegments(다운로드 차단) 목록에 있는 건 IIS 기본 보안 설정이라 정상입니다.
+- **HTTP 500.19 오류가 나면** 오류 페이지의 "오류 코드"를 확인하세요.
+  - `0x80070005` (권한 부족): 폴더 → 속성 → 보안에서 **IIS_IUSRS**(및 IUSR)에 **읽기 및 실행** 권한 추가.
+    다운로드한 zip을 풀어 옮긴 경우 권한이 상속되지 않아 자주 생깁니다.
+  - `0x80070021` (구성 잠김) 또는 그 밖의 코드: `web.config`를 지우고 IIS 관리자 → **MIME 형식**에서
+    `.webmanifest` → `application/manifest+json` 추가. (http에서는 앱 설치가 어차피 안 되므로 생략해도 됨)
 - **http(사내 주소)에서도 정상 동작**합니다. 다만 브라우저 보안 정책상 https가 아니면 다음 기능은 자동으로 대체/생략됩니다.
   - 앱 설치 · 오프라인 실행(PWA): https에서만 가능 → http에서는 일반 웹페이지로 동작
   - 저지연 입력(`pointerrawupdate`): https에서만 → 일반 마우스 이벤트 사용 (차이는 미미)
